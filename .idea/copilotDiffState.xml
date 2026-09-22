@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CopilotDiffPersistence">
+    <option name="pendingDiffs">
+      <map>
+        <entry key="$PROJECT_DIR$/backend/rocket-trading/src/test/java/com/rockettrading/rocket_trading/RocketTradingApplicationTests.java">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/backend/rocket-trading/src/test/java/com/rockettrading/rocket_trading/RocketTradingApplicationTests.java" />
+              <option name="originalContent" value="package com.rockettrading.rocket_trading;&#10;&#10;import org.junit.jupiter.api.Test;&#10;import org.springframework.boot.test.context.SpringBootTest;&#10;import org.springframework.boot.autoconfigure.SpringBootApplication;&#10;&#10;import static org.junit.jupiter.api.Assertions.assertEquals;&#10;import static org.junit.jupiter.api.Assertions.assertTrue;&#10;&#10;/**&#10; * Lightweight unit test for the application bootstrap.&#10; * &#10; * This test DOES NOT load the full Spring context, to keep the test suite fast&#10; * during TDD iterations. Integration tests with @SpringBootTest should be&#10; * created only when testing Spring-specific functionality like MVC endpoints&#10; * or service orchestration.&#10; */&#10;class RocketTradingApplicationTests {&#10;&#10;&#9;@Test&#10;&#9;void applicationClassIsMarkedAsSpringBootApplication() {&#10;&#9;&#9;assertTrue(RocketTradingApplication.class.isAnnotationPresent(SpringBootApplication.class));&#10;&#9;}&#10;&#10;&#9;@Test&#10;&#9;public void simpleArithmeticTest() {&#10;&#9;&#9;assertEquals(2 + 2, 4);&#10;&#9;}&#10;&#10;&#10;}" />
+              <option name="updatedContent" value="package com.rockettrading.rocket_trading;&#10;&#10;import org.junit.jupiter.api.Test;&#10;import org.springframework.boot.autoconfigure.SpringBootApplication;&#10;&#10;import static org.junit.jupiter.api.Assertions.assertEquals;&#10;import static org.junit.jupiter.api.Assertions.assertTrue;&#10;&#10;/**&#10; * Lightweight unit test for the application bootstrap.&#10; * &#10; * This test DOES NOT load the full Spring context, to keep the test suite fast&#10; * during TDD iterations. Integration tests with @SpringBootTest should be&#10; * created only when testing Spring-specific functionality like MVC endpoints&#10; * or service orchestration.&#10; */&#10;class RocketTradingApplicationTests {&#10;&#10;&#9;@Test&#10;&#9;void applicationClassIsMarkedAsSpringBootApplication() {&#10;&#9;&#9;assertTrue(RocketTradingApplication.class.isAnnotationPresent(SpringBootApplication.class));&#10;&#9;}&#10;&#10;&#9;@Test&#10;&#9;public void simpleArithmeticTest() {&#10;&#9;&#9;assertEquals(2 + 2, 4);&#10;&#9;}&#10;&#10;}" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>
