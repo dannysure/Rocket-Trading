@@ -1,4 +1,6 @@
 package com.rockettrading.rocket_trading.service;
 
-public class UserService {
+public class InstrumentService {
+
+
 }
