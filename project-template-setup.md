@@ -172,7 +172,7 @@ backend/trading-core/
 |  |  `- resources/
 |  |     `- application.yml
 |  `- test/
-`- pom.xml
+`- build.gradle
 ```
 
 ### Spring Boot reporting-service template
@@ -190,7 +190,7 @@ backend/reporting-service/
 |  |  `- resources/
 |  |     `- application.yml
 |  `- test/
-`- pom.xml
+`- build.gradle
 ```
 
 ### Database and infrastructure template
@@ -253,7 +253,7 @@ npx @nestjs/cli@latest new gateway --package-manager npm --skip-git --strict
 
 ```powershell
 $tmp = Join-Path $env:TEMP 'trading-core.zip'
-Invoke-WebRequest -Uri 'https://start.spring.io/starter.zip?type=maven-project&language=java&baseDir=trading-core&groupId=com.rockettrading&artifactId=trading-core&name=trading-core&description=Rocket%20Trading%20Core&packageName=com.rockettrading.tradingcore&packaging=jar&javaVersion=21&dependencies=web,data-jpa,validation,security,actuator,postgresql,kafka' -OutFile $tmp
+Invoke-WebRequest -Uri 'https://start.spring.io/starter.zip?type=gradle-project&language=java&baseDir=trading-core&groupId=com.rockettrading&artifactId=trading-core&name=trading-core&description=Rocket%20Trading%20Core&packageName=com.rockettrading.tradingcore&packaging=jar&javaVersion=21&dependencies=web,data-jpa,validation,security,actuator,postgresql,kafka' -OutFile $tmp
 Expand-Archive -Path $tmp -DestinationPath 'C:\Users\Administrator\Downloads\Rocket-Trading\backend' -Force
 Remove-Item $tmp -Force
 ```
@@ -262,7 +262,7 @@ Remove-Item $tmp -Force
 
 ```powershell
 $tmp = Join-Path $env:TEMP 'reporting-service.zip'
-Invoke-WebRequest -Uri 'https://start.spring.io/starter.zip?type=maven-project&language=java&baseDir=reporting-service&groupId=com.rockettrading&artifactId=reporting-service&name=reporting-service&description=Rocket%20Trading%20Reporting%20Service&packageName=com.rockettrading.reporting&packaging=jar&javaVersion=21&dependencies=web,data-jpa,validation,actuator,postgresql,kafka' -OutFile $tmp
+Invoke-WebRequest -Uri 'https://start.spring.io/starter.zip?type=gradle-project&language=java&baseDir=reporting-service&groupId=com.rockettrading&artifactId=reporting-service&name=reporting-service&description=Rocket%20Trading%20Reporting%20Service&packageName=com.rockettrading.reporting&packaging=jar&javaVersion=21&dependencies=web,data-jpa,validation,actuator,postgresql,kafka' -OutFile $tmp
 Expand-Archive -Path $tmp -DestinationPath 'C:\Users\Administrator\Downloads\Rocket-Trading\backend' -Force
 Remove-Item $tmp -Force
 ```
@@ -566,18 +566,18 @@ npm install
 npm run start:dev
 ```
 
-### Run trading-core tests
+### Run trading-core
 
 ```powershell
 Set-Location C:\Users\Administrator\Downloads\Rocket-Trading\backend\trading-core
-mvn test
+.\gradlew.bat bootRun
 ```
 
-### Run reporting-service tests
+### Run reporting-service
 
 ```powershell
 Set-Location C:\Users\Administrator\Downloads\Rocket-Trading\backend\reporting-service
-mvn test
+.\gradlew.bat bootRun
 ```
 
 ## Order to fill things in
