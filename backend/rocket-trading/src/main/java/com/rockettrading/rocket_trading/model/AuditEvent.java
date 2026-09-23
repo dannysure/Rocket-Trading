@@ -7,6 +7,9 @@ public class AuditEvent {
     private Instant occurredAt;
     private String recordActor;
 
+    public AuditEvent() {
+    }
+
     public AuditEvent(String eventType, Instant occurredAt, String recordActor) {
         this.eventType = eventType;
         this.occurredAt = occurredAt;

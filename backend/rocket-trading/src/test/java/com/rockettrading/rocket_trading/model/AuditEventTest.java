@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.rockettrading.rocket_trading.model.AuditEvent;
 import java.time.Instant;
 
-public class AuditServiceTests {
+public class AuditEventTest {
 
     @Test
     @DisplayName("constructor initializes fields correctly")
