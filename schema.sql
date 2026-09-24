@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS fills CASCADE;
 DROP TABLE IF EXISTS orders CASCADE;
 DROP TABLE IF EXISTS market_quotes CASCADE;
 DROP TABLE IF EXISTS client_subscriptions CASCADE;
+DROP TABLE IF EXISTS client_sessions CASCADE;
 DROP TABLE IF EXISTS model_portfolio_holdings CASCADE;
 DROP TABLE IF EXISTS model_portfolios CASCADE;
 DROP TABLE IF EXISTS client_holdings CASCADE;
@@ -35,10 +36,23 @@ CREATE TABLE financial_advisors (
 CREATE TABLE client_profiles (
     client_id           SERIAL PRIMARY KEY,
     client_full_name    TEXT NOT NULL,
+    email_address       TEXT NOT NULL UNIQUE,
     date_of_birth       DATE NOT NULL,
     risk_profile        TEXT NOT NULL CHECK (risk_profile IN ('Cautious', 'Balanced', 'Adventurous')),
     advisor_id          INTEGER REFERENCES financial_advisors(advisor_id),
     registered_at       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- -----------------------------------------------------------------------------
+-- 2a. CLIENT SESSIONS
+-- BRS Coverage: BR-01 (Secure Sign-in), BR-03 (Time-limited / Revocable Sessions)
+-- Description: Stores revocable client sessions issued by the stub JWT flow used
+--              during early delivery slices.
+-- -----------------------------------------------------------------------------
+CREATE TABLE client_sessions (
+    session_id           BIGINT PRIMARY KEY,
+    client_id            INTEGER NOT NULL REFERENCES client_profiles(client_id),
+    expires_at           TIMESTAMPTZ NOT NULL
 );
 
 -- -----------------------------------------------------------------------------
