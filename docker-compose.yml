@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${DB_USER:-team_rocket_admin}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
