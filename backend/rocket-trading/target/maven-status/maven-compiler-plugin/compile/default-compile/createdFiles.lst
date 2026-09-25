@@ -1,0 +1,16 @@
+com\rockettrading\rocket_trading\model\BlotterEntry.class
+com\rockettrading\rocket_trading\model\Quote.class
+com\rockettrading\rocket_trading\model\Position.class
+com\rockettrading\rocket_trading\model\Watchlist.class
+com\rockettrading\rocket_trading\model\Instrument.class
+com\rockettrading\rocket_trading\RocketTradingApplication.class
+com\rockettrading\rocket_trading\controller\UserController.class
+com\rockettrading\rocket_trading\model\Fill.class
+com\rockettrading\rocket_trading\repository\UserRepository.class
+com\rockettrading\rocket_trading\service\UserService.class
+com\rockettrading\rocket_trading\model\AuditEvent.class
+com\rockettrading\rocket_trading\model\Order.class
+com\rockettrading\rocket_trading\model\CashAccount.class
+com\rockettrading\rocket_trading\model\PriceAlert.class
+com\rockettrading\rocket_trading\model\Session.class
+com\rockettrading\rocket_trading\model\Client.class

@@ -52,10 +52,17 @@ import { TradingviewChartComponent } from './tradingview-chart.component';
     .chart-panel {
       width: 100%;
       padding: 1.5rem;
+      height: clamp(36rem, calc(100dvh - 18rem), 1200px);
       background: linear-gradient(135deg, rgba(25, 30, 45, 0.8), rgba(20, 25, 40, 0.8));
       border: 1px solid rgba(59, 130, 246, 0.2);
       border-radius: 1rem;
       box-shadow: 0 16px 32px rgba(0, 0, 0, 0.6);
+    }
+
+    app-tradingview-chart {
+      display: block;
+      width: 100%;
+      height: 100%;
     }
   `],
 })
