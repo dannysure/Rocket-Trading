@@ -115,6 +115,10 @@ The UI runs on `http://localhost:4200`.
 
 ## Useful backend endpoints
 
+See the [OpenAPI YAML contract](docs/api/openapi.yaml) and the
+[implementation and usage guide](docs/api/README.md) for all operations, schemas,
+authentication, examples, and current implementation gaps.
+
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/sign-in`
 - `POST /api/v1/auth/sign-out`
