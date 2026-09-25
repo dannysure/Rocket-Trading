@@ -1,0 +1,463 @@
+openapi: 3.0.3
+info:
+  title: Rocket Trading API
+  version: 1.0.0
+  description: |
+    Contract for the existing Spring Boot demo API. JSON numbers represent
+    BigDecimal values; timestamps are UTC instants. Authentication is currently
+    email-only demo sign-in. See README.md for implementation gaps and usage.
+servers:
+  - url: http://localhost:8081/api/v1
+    description: Local backend
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Quotes
+  - name: Portfolio
+  - name: Orders
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerClient
+      summary: Register a client and a USD trading account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterClientRequest'
+            example: {name: Demo Trader, email: trader@example.com, initialCash: 10000}
+      responses:
+        '201':
+          description: Client registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/sign-in:
+    post:
+      tags: [Auth]
+      operationId: signIn
+      summary: Create a session using a registered email
+      description: Demo authentication; no password is accepted or checked.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInRequest'
+            example: {email: trader@example.com}
+      responses:
+        '200':
+          description: Session and bearer token created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/sign-out:
+    post:
+      tags: [Auth]
+      operationId: signOut
+      summary: Expire the authenticated session
+      responses:
+        '204':
+          description: Signed out; no response body
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /quotes/{symbol}:
+    get:
+      tags: [Quotes]
+      operationId: getQuote
+      summary: Retrieve a current quote from Fauxnance
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema: {type: string}
+          example: AAPL
+        - name: market
+          in: query
+          description: stock or crypto, case-insensitive
+          schema: {type: string, default: stock}
+      responses:
+        '200':
+          description: Current quote
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /portfolio/summary:
+    get:
+      tags: [Portfolio]
+      operationId: getPortfolioSummary
+      summary: Get the authenticated client's cash and positions
+      responses:
+        '200':
+          description: Portfolio summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /orders:
+    post:
+      tags: [Orders]
+      operationId: submitOrder
+      summary: Submit and immediately execute an order
+      description: |
+        Returns HTTP 202 although successful execution is synchronous and the
+        returned order is FILLED. A breached limit or insufficient cash/holdings
+        returns 409 ORDER_REJECTED. No idempotency key is implemented; do not
+        blindly retry submissions. Rejection exceptions roll back the transaction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitOrderRequest'
+            example: {symbol: AAPL, side: BUY, quantity: 1, market: stock, orderType: MARKET}
+      responses:
+        '202':
+          description: Order executed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      summary: List the authenticated client's orders
+      description: Returns an array without pagination.
+      responses:
+        '200':
+          description: Orders, possibly empty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /orders/{orderId}:
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      summary: Get an order belonging to the authenticated client
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /fills/{orderId}:
+    get:
+      tags: [Orders]
+      operationId: listFills
+      summary: List fills for an order
+      description: |
+        Requires authentication, but the current implementation does not check
+        order ownership. Unknown orders return an empty array, not 404.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Fills, possibly empty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FillListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token from sign-in; the corresponding server-side session must remain valid.
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: {type: integer, format: int64}
+  responses:
+    BadRequest:
+      description: VALIDATION_FAILED; invalid fields, JSON, or parameter types
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    Unauthorized:
+      description: UNAUTHENTICATED or INVALID_CREDENTIALS
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    NotFound:
+      description: ACCOUNT_NOT_FOUND or ORDER_NOT_FOUND
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    Conflict:
+      description: CLIENT_ALREADY_EXISTS, ORDER_REJECTED, QUOTE_STALE, or CONFLICT
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    Unavailable:
+      description: PRICE_UNAVAILABLE or QUOTE_PROVIDER_NOT_CONFIGURED
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    InternalError:
+      description: INTERNAL_ERROR; unexpected server failure
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+  schemas:
+    RegisterClientRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name: {type: string, minLength: 1, pattern: '\S'}
+        email: {type: string, format: email, minLength: 1, pattern: '\S'}
+        dateOfBirth: {type: string, format: date, nullable: true, default: '1990-01-01'}
+        riskProfile:
+          type: string
+          nullable: true
+          default: Balanced
+          description: Omitted, null, or blank uses Balanced; otherwise trimmed.
+        initialCash: {type: number, minimum: 0.01, nullable: true, default: 10000}
+    SignInRequest:
+      type: object
+      required: [email]
+      properties:
+        email: {type: string, format: email, minLength: 1, pattern: '\S'}
+    SubmitOrderRequest:
+      type: object
+      required: [symbol, side, quantity]
+      description: quantity is required for successful execution; missing/null currently causes 500 rather than 400.
+      properties:
+        symbol: {type: string, minLength: 1, pattern: '\S', example: AAPL}
+        side:
+          type: string
+          minLength: 1
+          pattern: '\S'
+          description: BUY or SELL, trimmed and case-insensitive.
+          example: BUY
+        quantity:
+          type: number
+          minimum: 0.000001
+          description: Rounded to six decimal places using HALF_UP.
+        market:
+          type: string
+          nullable: true
+          default: stock
+          description: stock or crypto, trimmed and case-insensitive; null or blank uses stock.
+        orderType:
+          type: string
+          nullable: true
+          default: MARKET
+          description: MARKET or LIMIT, trimmed and case-insensitive; null or blank uses MARKET.
+        limitPrice:
+          type: number
+          nullable: true
+          description: Only checked for LIMIT with a non-null price; positivity is not currently validated.
+    ClientRegistrationResponse:
+      type: object
+      required: [clientId, name, email, registeredAt]
+      properties:
+        clientId: {type: integer, format: int64}
+        name: {type: string}
+        email: {type: string}
+        registeredAt: {type: string, format: date-time}
+    SessionResponse:
+      type: object
+      required: [clientId, sessionId, expiresAt, accessToken, tokenType]
+      properties:
+        clientId: {type: integer, format: int64}
+        sessionId: {type: integer, format: int64}
+        expiresAt: {type: string, format: date-time}
+        accessToken: {type: string}
+        tokenType: {type: string, enum: [Bearer]}
+    QuoteResponse:
+      type: object
+      required: [symbol, bid, ask, price, bidVolume, askVolume, capturedAt, market]
+      properties:
+        symbol: {type: string}
+        bid: {type: number}
+        ask: {type: number}
+        price: {type: number}
+        bidVolume: {type: integer, format: int64}
+        askVolume: {type: integer, format: int64}
+        capturedAt: {type: string, format: date-time}
+        market: {type: string}
+    OrderResponse:
+      type: object
+      required: [orderId, symbol, side, orderType, quantity, status, rejectionReason, submittedAt]
+      properties:
+        orderId: {type: integer, format: int64}
+        symbol: {type: string}
+        side: {type: string}
+        orderType: {type: string}
+        quantity: {type: number}
+        status: {type: string, example: FILLED}
+        rejectionReason: {type: string, nullable: true}
+        submittedAt: {type: string, format: date-time}
+    FillResponse:
+      type: object
+      required: [fillId, orderId, executedQuantity, executedPrice, executedAt]
+      properties:
+        fillId: {type: integer, format: int64}
+        orderId: {type: integer, format: int64}
+        executedQuantity: {type: number}
+        executedPrice: {type: number}
+        executedAt: {type: string, format: date-time}
+    PositionResponse:
+      type: object
+      required: [symbol, quantity]
+      properties:
+        symbol: {type: string}
+        quantity: {type: number}
+    PortfolioSummaryResponse:
+      type: object
+      required: [clientId, accountId, cashBalance, currency, positions]
+      properties:
+        clientId: {type: integer, format: int64}
+        accountId: {type: integer, format: int64}
+        cashBalance: {type: number}
+        currency: {type: string, example: USD}
+        positions:
+          type: array
+          items: {$ref: '#/components/schemas/PositionResponse'}
+    ResponseMeta:
+      type: object
+      required: [requestId, timestamp]
+      properties:
+        requestId: {type: string, format: uuid}
+        timestamp: {type: string, format: date-time}
+    ApiErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details, requestId, timestamp]
+          properties:
+            code: {type: string, example: VALIDATION_FAILED}
+            message: {type: string}
+            details:
+              type: array
+              items:
+                type: object
+                required: [field, issue]
+                properties:
+                  field: {type: string}
+                  issue: {type: string}
+            requestId: {type: string, format: uuid}
+            timestamp: {type: string, format: date-time}
+    RegistrationEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/ClientRegistrationResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    SessionEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/SessionResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    QuoteEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/QuoteResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    PortfolioEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/PortfolioSummaryResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    OrderEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/OrderResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    OrderListEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/OrderResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    FillListEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/FillResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}

@@ -1,32 +1,22 @@
-# Stage 1: Build dependencies
-FROM python:3.11-slim AS builder
+# syntax=docker/dockerfile:1
+
+FROM maven:3.9.9-eclipse-temurin-21 AS build
+
+WORKDIR /workspace
+
+COPY backend/rocket-trading/pom.xml backend/rocket-trading/pom.xml
+COPY backend/rocket-trading/.mvn backend/rocket-trading/.mvn
+COPY backend/rocket-trading/mvnw backend/rocket-trading/mvnw
+COPY backend/rocket-trading/src backend/rocket-trading/src
+
+RUN mvn -f backend/rocket-trading/pom.xml clean package -DskipTests
+
+FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt-get/lists/*
+COPY --from=build /workspace/backend/rocket-trading/target/rocket-trading-0.0.1-SNAPSHOT.jar app.jar
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+EXPOSE 8081
 
-# Stage 2: Final runtime
-FROM python:3.11-slim AS runner
-
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    && rm -rf /var/lib/apt-get/lists/*
-
-COPY --from=builder /root/.local /root/.local
-COPY . .
-
-ENV PATH=/root/.local/bin:$PATH
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-EXPOSE 8000
-
-CMD ["python", "main.py"]
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

@@ -1,44 +1,60 @@
 services:
   db:
     image: postgres:15-alpine
-    container_name: leap_postgres_db
-    restart: always
+    container_name: rocket_trading_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-team_rocket_db}
-      POSTGRES_USER: ${DB_USER:-team_rocket_admin}
+      POSTGRES_USER: ${DB_USERNAME:-team_rocket_admin}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - ./schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+      - ./backend/rocket-trading/src/main/resources/data.sql:/docker-entrypoint-initdb.d/002-data.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-team_rocket_admin} -d ${DB_NAME:-team_rocket_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-team_rocket_admin} -d ${DB_NAME:-team_rocket_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
       start_period: 10s
 
-  app:
+  api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: leap_trading_app
-    restart: always
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    ports:
-      - "8000:8000"
+    container_name: rocket_trading_api
+    restart: unless-stopped
     env_file:
-      - .env
+      - ./backend/rocket-trading/.env
     environment:
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=${DB_NAME:-team_rocket_db}
-      - DB_USER=${DB_USER:-team_rocket_admin}
-      - DB_PASSWORD=${DB_PASSWORD:-team_rocket_password123}
+      DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-team_rocket_db}
+      DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
+      DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
+      DB_DRIVER: org.postgresql.Driver
+      JWT_ISSUER: ${JWT_ISSUER:-rocket-trading}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-8}
+      FAUXNANCE_BASE_URL: ${FAUXNANCE_BASE_URL:-https://y4t9nq2bqf.execute-api.eu-west-2.amazonaws.com/v1}
+      FAUXNANCE_STOCK_PATH: ${FAUXNANCE_STOCK_PATH:-/v1/stocks/{symbol}/quote}
+      FAUXNANCE_CRYPTO_PATH: ${FAUXNANCE_CRYPTO_PATH:-/v1/crypto/{symbol}/quote}
+      FAUXNANCE_MAX_AGE_SECONDS: ${FAUXNANCE_MAX_AGE_SECONDS:-60}
     depends_on:
       db:
         condition: service_healthy
+    ports:
+      - "8081:8081"
+
+  ui:
+    build:
+      context: ./frontend/rocket-trading-ui
+      dockerfile: Dockerfile
+    container_name: rocket_trading_ui
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "4200:80"
 
 volumes:
   postgres_data:
