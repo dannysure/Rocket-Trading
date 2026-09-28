@@ -69,3 +69,11 @@ export interface OrderResponse {
   rejectionReason?: string | null;
   submittedAt: string;
 }
+
+export interface FillResponse {
+  fillId: number;
+  orderId: number;
+  executedQuantity: number;
+  executedPrice: number;
+  executedAt: string;
+}

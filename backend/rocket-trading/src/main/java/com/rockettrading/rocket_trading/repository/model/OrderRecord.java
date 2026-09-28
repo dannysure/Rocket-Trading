@@ -7,6 +7,9 @@ import java.time.Instant;
 
 @Data
 public class OrderRecord {
+    private String market;
+    private String idempotencyKey;
+    private String requestFingerprint;
     private Long orderId;
     private Long clientId;
     private Long accountId;

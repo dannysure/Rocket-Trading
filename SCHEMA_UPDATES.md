@@ -1,3 +1,5 @@
+> Historical Python/database prototype. The Spring trading app now uses Flyway migrations; see [the current guide](docs/db-backend-connection.md). Do not apply the prototype settlement triggers to the Spring database.
+
 # Database Schema Updates & Transaction Tests
 
 ## Summary of Changes

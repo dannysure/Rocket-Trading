@@ -1,0 +1,18 @@
+# Explicitly isolated test stack; never use fixture prices for real trading.
+services:
+  db:
+    ports: !reset []
+  api:
+    environment:
+      FAUXNANCE_BASE_URL: http://quotes:8099
+      FAUXNANCE_API_KEY: test-fixture-only
+      FAUXNANCE_STOCK_PATH: /v1/quotes/{symbol}
+      FAUXNANCE_CRYPTO_PATH: /v1/quotes/{symbol}
+    depends_on:
+      quotes:
+        condition: service_started
+  quotes:
+    image: node:22-alpine
+    command: ["node", "/fixture/quote-server.mjs"]
+    volumes:
+      - ./tests/quote-server.mjs:/fixture/quote-server.mjs:ro

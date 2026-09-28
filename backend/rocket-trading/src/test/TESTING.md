@@ -1,48 +1,20 @@
-# Rocket Trading backend TDD starter map
+# Trading tests
 
-This module is set up for a simple Maven + JUnit workflow.
+From `backend/rocket-trading`:
 
-Run the current test suite from this module root with:
+- `./mvnw test`: database-free domain, validation, quote, auth and security unit tests.
+- `./mvnw verify`: unit tests plus `*IT` PostgreSQL integration tests; Docker is required.
+- Windows: use `mvnw.cmd`.
 
-```bat
-mvn test
-```
+Integration tests run actual migrations, Spring transaction proxies, MyBatis SQL and HTTP
+security in disposable PostgreSQL containers. Quote responses are deterministic. They
+never target a shared or developer database. The obsolete disabled TDD roadmap was replaced
+with executable tests and the BRD coverage matrix in `docs/db-backend-connection.md`.
 
-## Current starter tests
+`TradingIntegrationIT` covers acceptance vs execution, buys/sells, current/stale quotes,
+limits, ownership, sessions, validation, persistent rejection, rollback and concurrency.
+`RestartRecoveryIT` closes/restarts actual application contexts against the same database.
+`MigrationIT` verifies safe refusal of an unmanaged schema and preservation after explicit
+V1-compatible adoption. Mocks alone do not prove database atomicity.
 
-- `RocketTradingApplicationTests` - lightweight boot annotation smoke test
-- `controller/UserControllerTest` - controller skeleton smoke test
-- `service/UserServiceTest` - service skeleton smoke test
-- `repository/UserRepositoryTest` - repository skeleton smoke test
-- `model/DomainModelStructureTest` - starter domain object contract checks
-- `architecture/TradingTddRoadmapTest` - disabled roadmap for the next TDD slices
-
-## Recommended next test slices
-
-### 1. Identity and access
-- register client
-- sign in client
-- reject invalid credentials
-- expire / revoke a session
-
-### 2. Order placement
-- reject invalid side or quantity
-- reject unsupported instrument
-- reject orders with insufficient cash or holdings
-- accept valid orders and persist intent first
-
-### 3. Portfolio and history
-- show only the signed-in client’s holdings
-- show cash balance
-- show chronological blotter history
-
-### 4. Audit and reporting
-- write audit events for accepted / rejected / filled actions
-- verify trades can be reconstructed later
-- keep reporting reads separate from trading writes
-
-## Suggested rule for the next implementation slice
-
-Write one failing test for one business rule, implement the smallest change needed to pass it, then refactor.
-
-
+For frontend/browser commands, see the repository README and connection guide.

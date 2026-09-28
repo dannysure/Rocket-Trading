@@ -1,4 +1,9 @@
 *.log
 .env
+**/target/
+**/node_modules/
+**/test-results/
+**/playwright-report/
+output/playwright/
 
 Project-Business-Requirements-Specification.txt

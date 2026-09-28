@@ -17,7 +17,7 @@ class FauxnanceQuoteClientTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void treatsProviderMarkedFreshQuoteAsCurrentEvenWhenCachedTimestampIsOlderThanThreshold() throws Exception {
+    void preservesSourceTimestampEvenWhenProviderMarksOldQuoteFresh() throws Exception {
         FauxnanceProperties properties = new FauxnanceProperties();
         properties.setApiKey("test-key");
         properties.setMaxAgeSeconds(60);
@@ -43,6 +43,16 @@ class FauxnanceQuoteClientTest {
         Quote quote = client.mapQuoteResponse(objectMapper.readTree(response), "MSFT");
 
         assertEquals("MSFT", quote.getSymbol());
-        assertTrue(quote.getCapturedAt().isAfter(Instant.now().minusSeconds(5)));
+        assertEquals(Instant.parse("2026-09-24T17:45:13Z"), quote.getCapturedAt());
+    }
+
+    @Test
+    void rejectsMissingTimestampsAndExplicitlyStalePayloads() throws Exception {
+        FauxnanceQuoteClient client = new FauxnanceQuoteClient(mock(RestClient.class), new FauxnanceProperties());
+        for (String json : java.util.List.of("{\"price\":100}", "{\"price\":100,\"stale\":true,\"timestamp\":\"2026-01-01T00:00:00Z\"}")) {
+            var payload = objectMapper.readTree(json);
+            org.junit.jupiter.api.Assertions.assertThrows(com.rockettrading.rocket_trading.exception.ExternalServiceException.class,
+                    () -> client.mapQuoteResponse(payload, "AAPL"));
+        }
     }
 }

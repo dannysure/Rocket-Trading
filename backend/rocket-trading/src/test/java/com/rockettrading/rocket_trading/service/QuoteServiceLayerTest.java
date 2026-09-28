@@ -46,4 +46,18 @@ class QuoteServiceLayerTest {
 
         assertThrows(ConflictException.class, () -> quoteService.getQuote("BTCUSD", "crypto"));
     }
+
+    @Test
+    void rejectsFutureWrongSymbolCrossedAndUnrepresentableQuotes() {
+        FauxnanceProperties properties = new FauxnanceProperties();
+        properties.setMaxAgeSeconds(60);
+        for (Quote quote : java.util.List.of(
+                new Quote("AAPL", BigDecimal.ONE, BigDecimal.TEN, BigDecimal.TEN, 0, 0, Instant.now().plusSeconds(60)),
+                new Quote("MSFT", BigDecimal.ONE, BigDecimal.TEN, BigDecimal.TEN, 0, 0, Instant.now()),
+                new Quote("AAPL", BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ONE, 0, 0, Instant.now()),
+                new Quote("AAPL", new BigDecimal("0.000001"), BigDecimal.ONE, BigDecimal.ONE, 0, 0, Instant.now()))) {
+            QuoteProvider provider = (symbol, market) -> quote;
+            assertThrows(ConflictException.class, () -> new QuoteService(provider, properties).getQuote("AAPL", "stock"));
+        }
+    }
 }

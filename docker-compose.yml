@@ -1,60 +1,43 @@
 services:
   db:
     image: postgres:15-alpine
-    container_name: rocket_trading_postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-team_rocket_db}
       POSTGRES_USER: ${DB_USERNAME:-team_rocket_admin}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:${DB_PORT:-5435}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
-      - ./backend/rocket-trading/src/main/resources/data.sql:/docker-entrypoint-initdb.d/002-data.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-team_rocket_admin} -d ${DB_NAME:-team_rocket_db}"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
       timeout: 5s
-      retries: 5
-      start_period: 10s
-
+      retries: 20
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: rocket_trading_api
+    build: .
     restart: unless-stopped
-    env_file:
-      - ./backend/rocket-trading/.env
     environment:
       DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-team_rocket_db}
       DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
       DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
-      DB_DRIVER: org.postgresql.Driver
-      JWT_ISSUER: ${JWT_ISSUER:-rocket-trading}
-      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-8}
-      FAUXNANCE_BASE_URL: ${FAUXNANCE_BASE_URL:-https://y4t9nq2bqf.execute-api.eu-west-2.amazonaws.com/v1}
-      FAUXNANCE_STOCK_PATH: ${FAUXNANCE_STOCK_PATH:-/v1/stocks/{symbol}/quote}
-      FAUXNANCE_CRYPTO_PATH: ${FAUXNANCE_CRYPTO_PATH:-/v1/crypto/{symbol}/quote}
+      JWT_SECRET: ${JWT_SECRET:-change-me-development-jwt-secret-1234567890}
+      FAUXNANCE_API_KEY: ${FAUXNANCE_API_KEY:-}
+      FAUXNANCE_BASE_URL: ${FAUXNANCE_BASE_URL:-https://y4t9nq2bqf.execute-api.eu-west-2.amazonaws.com}
+      FAUXNANCE_STOCK_PATH: ${FAUXNANCE_STOCK_PATH:-/v1/quotes/{symbol}}
+      FAUXNANCE_CRYPTO_PATH: ${FAUXNANCE_CRYPTO_PATH:-/v1/quotes/{symbol}}
       FAUXNANCE_MAX_AGE_SECONDS: ${FAUXNANCE_MAX_AGE_SECONDS:-60}
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "8081:8081"
-
+      - "127.0.0.1:8081:8081"
   ui:
-    build:
-      context: ./frontend/rocket-trading-ui
-      dockerfile: Dockerfile
-    container_name: rocket_trading_ui
-    restart: unless-stopped
+    build: ./frontend/rocket-trading-ui
     depends_on:
       - api
     ports:
-      - "4200:80"
-
+      - "127.0.0.1:4200:80"
 volumes:
   postgres_data:

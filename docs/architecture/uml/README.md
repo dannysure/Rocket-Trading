@@ -1,6 +1,6 @@
 # UML Diagrams
 
-These Mermaid source files capture the initial architecture and business flows described in the business requirements and implementation planning documents. They live in the shared `docs/architecture/uml/` area because they span the browser, gateway, trading core, reporting, and database concerns rather than belonging to only one service.
+These Mermaid source files capture the original proposed architecture, not the current runtime. The gateway, event bus, reporting projections and push updates in these diagrams are not implemented by the core connection phase. The current runtime is Angular → one Spring Boot application (including a scheduled order worker) → PostgreSQL, with browser polling. See [the current connection guide](../../db-backend-connection.md). The diagrams remain historical planning material. They live in the shared `docs/architecture/uml/` area because they span the browser, gateway, trading core, reporting, and database concerns rather than belonging to only one service.
 
 ## Class diagrams
 

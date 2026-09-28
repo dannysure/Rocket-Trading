@@ -20,6 +20,7 @@ public class PortfolioService {
         this.holdingRepository = holdingRepository;
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public PortfolioSummaryResponse getPortfolioSummary(long clientId) {
         ClientAccountRecord account = clientAccountRepository.findDirectTradingAccountByClientId(clientId);
         if (account == null) {
