@@ -1,0 +1,10 @@
+.git
+.github
+.idea
+**/node_modules
+**/target
+**/dist
+**/.angular
+**/.gradle
+**/*.log
+backend/rocket-trading/.env

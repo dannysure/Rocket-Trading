@@ -1,0 +1,207 @@
+<main class="page-shell">
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Rocket Trading demo</p>
+      <h1>Direct trading platform test harness</h1>
+      <p class="subtitle">
+        Use the forms below to create a fixture client, sign in with JWT auth, pull Fauxnance quotes,
+        submit buy or sell orders, and check the resulting portfolio snapshot.
+      </p>
+    </div>
+    <div class="session-card">
+      <h2>Session</h2>
+      <ng-container *ngIf="session; else signedOut">
+        <p><strong>Client:</strong> {{ session.clientId }}</p>
+        <p><strong>Session:</strong> {{ session.sessionId }}</p>
+        <p><strong>Expires:</strong> {{ session.expiresAt | date:'medium' }}</p>
+        <button type="button" class="secondary" (click)="signOut()">Sign out</button>
+      </ng-container>
+      <ng-template #signedOut>
+        <p>No active session.</p>
+      </ng-template>
+    </div>
+  </header>
+
+  <section *ngIf="infoMessage" class="banner success">{{ infoMessage }}</section>
+  <section *ngIf="errorMessage" class="banner error">{{ errorMessage }}</section>
+
+  <section class="grid">
+    <article class="panel">
+      <h2>1. Register fixture client</h2>
+      <form [formGroup]="registerForm" (ngSubmit)="register()" class="stack">
+        <label>
+          <span>Name</span>
+          <input type="text" formControlName="name" />
+        </label>
+        <label>
+          <span>Email</span>
+          <input type="email" formControlName="email" />
+        </label>
+        <label>
+          <span>Date of birth</span>
+          <input type="date" formControlName="dateOfBirth" />
+        </label>
+        <label>
+          <span>Risk profile</span>
+          <select formControlName="riskProfile">
+            <option value="Cautious">Cautious</option>
+            <option value="Balanced">Balanced</option>
+            <option value="Adventurous">Adventurous</option>
+          </select>
+        </label>
+        <label>
+          <span>Initial cash</span>
+          <input type="number" formControlName="initialCash" step="0.01" />
+        </label>
+        <button type="submit">Register</button>
+      </form>
+    </article>
+
+    <article class="panel">
+      <h2>2. Sign in</h2>
+      <form [formGroup]="signInForm" (ngSubmit)="signIn()" class="stack">
+        <label>
+          <span>Email</span>
+          <input type="email" formControlName="email" />
+        </label>
+        <button type="submit">Sign in</button>
+      </form>
+      <p class="hint">This sprint uses a fixture-backed auth flow: sign in with the email you registered above.</p>
+    </article>
+  </section>
+
+  <section class="grid">
+    <article class="panel">
+      <h2>3. Quote lookup</h2>
+      <form [formGroup]="quoteForm" (ngSubmit)="fetchQuote()" class="stack inline-form">
+        <label>
+          <span>Symbol</span>
+          <input type="text" formControlName="symbol" />
+        </label>
+        <label>
+          <span>Market</span>
+          <select formControlName="market">
+            <option value="stock">Stock</option>
+            <option value="crypto">Crypto</option>
+          </select>
+        </label>
+        <button type="submit">Fetch quote</button>
+      </form>
+
+      <div *ngIf="quote" class="data-card">
+        <h3>{{ quote.symbol }} <small>{{ quote.market }}</small></h3>
+        <dl>
+          <div><dt>Bid</dt><dd>{{ quote.bid | number:'1.2-4' }}</dd></div>
+          <div><dt>Ask</dt><dd>{{ quote.ask | number:'1.2-4' }}</dd></div>
+          <div><dt>Price</dt><dd>{{ quote.price | number:'1.2-4' }}</dd></div>
+          <div><dt>As of</dt><dd>{{ quote.capturedAt | date:'medium' }}</dd></div>
+        </dl>
+      </div>
+    </article>
+
+    <article class="panel">
+      <h2>4. Place order</h2>
+      <form [formGroup]="orderForm" (ngSubmit)="submitOrder()" class="stack">
+        <div class="two-col">
+          <label>
+            <span>Symbol</span>
+            <input type="text" formControlName="symbol" />
+          </label>
+          <label>
+            <span>Market</span>
+            <select formControlName="market">
+              <option value="stock">Stock</option>
+              <option value="crypto">Crypto</option>
+            </select>
+          </label>
+        </div>
+        <div class="two-col">
+          <label>
+            <span>Side</span>
+            <select formControlName="side">
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+          </label>
+          <label>
+            <span>Quantity</span>
+            <input type="number" formControlName="quantity" step="0.000001" />
+          </label>
+        </div>
+        <div class="two-col">
+          <label>
+            <span>Order type</span>
+            <select formControlName="orderType">
+              <option value="MARKET">MARKET</option>
+              <option value="LIMIT">LIMIT</option>
+            </select>
+          </label>
+          <label>
+            <span>Limit price</span>
+            <input type="number" formControlName="limitPrice" step="0.0001" />
+          </label>
+        </div>
+        <button type="submit">Submit order</button>
+      </form>
+    </article>
+  </section>
+
+  <section class="grid">
+    <article class="panel">
+      <div class="section-head">
+        <h2>Portfolio</h2>
+        <button type="button" class="secondary" (click)="refreshDashboard()">Refresh</button>
+      </div>
+      <ng-container *ngIf="portfolio; else noPortfolio">
+        <p><strong>Account:</strong> {{ portfolio.accountId }}</p>
+        <p><strong>Cash:</strong> {{ portfolio.cashBalance | number:'1.2-4' }} {{ portfolio.currency }}</p>
+        <table *ngIf="portfolio.positions.length; else noPositions">
+          <thead>
+            <tr><th>Symbol</th><th>Quantity</th></tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let position of portfolio.positions">
+              <td>{{ position.symbol }}</td>
+              <td>{{ position.quantity | number:'1.2-6' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </ng-container>
+      <ng-template #noPortfolio>
+        <p>Sign in to load the portfolio.</p>
+      </ng-template>
+      <ng-template #noPositions>
+        <p>No positions yet.</p>
+      </ng-template>
+    </article>
+
+    <article class="panel">
+      <h2>Recent orders</h2>
+      <table *ngIf="orders.length; else noOrders">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Qty</th>
+            <th>Status</th>
+            <th>Submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let order of orders">
+            <td>{{ order.orderId }}</td>
+            <td>{{ order.symbol }}</td>
+            <td>{{ order.side }}</td>
+            <td>{{ order.quantity | number:'1.2-6' }}</td>
+            <td>{{ order.status }}</td>
+            <td>{{ order.submittedAt | date:'short' }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <ng-template #noOrders>
+        <p>No orders yet.</p>
+      </ng-template>
+    </article>
+  </section>
+</main>
