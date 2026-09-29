@@ -17,6 +17,14 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
+
+# Running the Frontend
+	cd Frontend
+	add your .env
+	ex: MARKET_DATA_API_KEY=your_api_key_here
+	npm install
+	npm start
+
 PowerShell: use `Copy-Item .env.example .env` instead of `cp`.
 Open http://localhost:4200. API: http://localhost:8081. PostgreSQL: localhost:5435.
 Register a fixture client, sign in with its email, then submit a supported order.
