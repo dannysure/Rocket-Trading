@@ -1,6 +1,13 @@
 # Rocket-Trading
 Team Rocket's trading platform.
 
+# Running the Frontend
+	cd Frontend
+	add your .env
+	ex: MARKET_DATA_API_KEY=your_api_key_here
+	npm install
+	npm start
+
 # Code Quality
 Checkstyle findings are reported by Jenkins without failing the build. To generate the report locally:
 
