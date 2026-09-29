@@ -4,4 +4,5 @@ VALUES
     ('MSFT', 'Microsoft Corporation', 'Equity', 'USD', TRUE),
     ('GOOGL', 'Alphabet Inc.', 'Equity', 'USD', TRUE),
     ('BTCUSD', 'Bitcoin / US Dollar', 'Crypto', 'USD', TRUE),
-    ('ETHUSD', 'Ethereum / US Dollar', 'Crypto', 'USD', TRUE);
+    ('ETHUSD', 'Ethereum / US Dollar', 'Crypto', 'USD', TRUE)
+ON CONFLICT (ticker_symbol) DO NOTHING;

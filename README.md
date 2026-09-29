@@ -1,150 +1,71 @@
 # Rocket Trading
 
-Rocket Trading is a Spring Boot + Angular direct trading demo built around the LEAP business requirements. The current implementation includes:
+An Angular + Spring Boot + MyBatis trading demo, backed exclusively by PostgreSQL.
+Accepted orders are saved before a background worker executes them. Settlement updates
+cash, holdings, fills, the ledger and audit together. PostgreSQL data survives restarts;
+Flyway applies versioned schema changes without resetting tables.
 
-- fixture-backed registration and JWT sign-in
-- Fauxnance-powered stock and crypto quote lookup
-- transactional order placement against Postgres
-- portfolio summary and order history endpoints
-- a simple Angular UI for testing the main flows end to end
+## Run locally
 
-## Repository structure
+Install Docker Desktop with Compose v2.24.4 or later and start Docker.
+From the repository root:
 
-- [backend/rocket-trading/](C:/Users/Administrator/Downloads/Rocket-Trading/backend/rocket-trading) - Spring Boot API, MyBatis repositories, JWT security, and tests
-- [frontend/rocket-trading-ui/](C:/Users/Administrator/Downloads/Rocket-Trading/frontend/rocket-trading-ui) - Angular test UI
-- [schema.sql](C:/Users/Administrator/Downloads/Rocket-Trading/schema.sql) - shared Postgres schema for local Docker database setup
-
-## Backend setup
-
-1. Copy [.env.example](C:/Users/Administrator/Downloads/Rocket-Trading/backend/rocket-trading/.env.example) to `backend/rocket-trading/.env`.
-2. Set at least:
-   - `JWT_SECRET`
-   - `FAUXNANCE_API_KEY`
-   - optional Postgres overrides if you want a real local database
-3. Start Postgres from either:
-   - repository root: `docker compose up -d db`
-   - backend module: `cd backend\\rocket-trading && docker compose up -d postgres`
-4. Run the API:
-
-   ```bat
-   cd backend\rocket-trading
-   mvn spring-boot:run
-   ```
-
-The API listens on `http://localhost:8081`.
-
-### No-virtualization fallback
-
-If Docker Desktop cannot run because virtualization is unavailable, the backend now defaults to an embedded H2 database automatically.
-
-That means you can run:
-
-```bat
-cd backend\rocket-trading
-mvn spring-boot:run
+```sh
+git switch feature/db-backend-connection
+cp .env.example .env
+# Set FAUXNANCE_API_KEY in .env to your supplied quote-provider key.
+docker compose up --build -d
 ```
 
-without Docker or PostgreSQL installed.
+PowerShell: use `Copy-Item .env.example .env` instead of `cp`.
+Open http://localhost:4200. API: http://localhost:8081. PostgreSQL: localhost:5435.
+Register a fixture client, sign in with its email, then submit a supported order.
+The UI follows accepted orders until they fill or reject and shows the resulting cash,
+holdings and fill prices. The starting catalogue is AAPL, MSFT, GOOGL, BTCUSD and ETHUSD.
 
-Spring Boot's Docker Compose integration is also disabled by default for this local mode, so the backend will not try to auto-start [compose.yaml](C:/Users/Administrator/Downloads/Rocket-Trading/backend/rocket-trading/compose.yaml) unless you explicitly enable it.
+A valid quote-provider key, paths and current timestamped quotes are needed for live orders.
+Without them, registration/sign-in work and attempted orders are recorded as rejected.
+For a deterministic demo without an API key, use the isolated browser-test stack in the guide.
 
-Optional local database inspection:
-
-- H2 console: `http://localhost:8081/h2-console`
-- JDBC URL: `jdbc:h2:mem:rockettrading`
-- Username: `sa`
-- Password: leave blank
-
-## Docker install on Windows
-
-If PowerShell says `docker : The term 'docker' is not recognized`, Docker Desktop is not installed or not on your PATH.
-
-Recommended install path on Windows:
-
-1. Install **Docker Desktop for Windows** from:
-   - https://www.docker.com/products/docker-desktop/
-2. Make sure **WSL 2** is enabled when the installer prompts you.
-3. Reboot if Windows asks.
-4. Open Docker Desktop once and wait for it to finish starting.
-5. Open a **new** PowerShell window and verify:
-
-   ```powershell
-   docker --version
-   docker compose version
-   ```
-
-If WSL is missing, install it in an elevated PowerShell first:
-
-```powershell
-wsl --install
+```sh
+docker compose logs -f api       # Diagnose startup or rejected quotes
+docker compose down              # Stop; keeps the database volume
+docker compose up -d             # Resume with existing data
 ```
 
-Then reboot and install Docker Desktop again if needed.
+**Existing database:** read the migration section before switching an older installation.
+Never remove its volume or enable automatic baselining to bypass a migration error.
 
-## Docker run from repository root
+## Development and tests
 
-Once Docker Desktop is installed and running:
+For native development/tests: Java 21, Node.js 22, and Docker. Maven is supplied by the wrapper.
 
-```powershell
-cd C:\Users\Administrator\Downloads\Rocket-Trading
-docker compose up --build
+```sh
+cd backend/rocket-trading
+./mvnw test                      # Fast unit tests, no database
+./mvnw verify                    # Also runs real PostgreSQL integration tests; Docker required
 ```
 
-That root compose file now starts:
+On Windows use `mvnw.cmd` instead of `./mvnw`.
 
-- `db` on port `5432`
-- `api` on port `8081`
-- `ui` on port `4200`
-
-Then open:
-
-- UI: `http://localhost:4200`
-- API: `http://localhost:8081`
-
-## Frontend setup
-
-Run the Angular UI in a second terminal:
-
-```bat
-cd frontend\rocket-trading-ui
-npm install
-npm start
-```
-
-The UI runs on `http://localhost:4200`.
-
-## Useful backend endpoints
-
-See the [OpenAPI YAML contract](docs/api/openapi.yaml) and the
-[implementation and usage guide](docs/api/README.md) for all operations, schemas,
-authentication, examples, and current implementation gaps.
-
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/sign-in`
-- `POST /api/v1/auth/sign-out`
-- `GET /api/v1/quotes/{symbol}?market=stock|crypto`
-- `GET /api/v1/portfolio/summary`
-- `POST /api/v1/orders`
-- `GET /api/v1/orders`
-
-## Tests
-
-Backend tests:
-
-```bat
-cd backend\rocket-trading
-mvn test
-```
-
-Frontend production build:
-
-```bat
-cd frontend\rocket-trading-ui
+```sh
+cd frontend/rocket-trading-ui
+npm ci
+npm run test:ci                  # Requires installed Chrome, or CHROME_BIN
 npm run build
 ```
 
-## Notes
+See [the connection and teammate guide](docs/db-backend-connection.md) for native app startup,
+browser tests, safe migration, troubleshooting and a copyable team announcement.
+See [the API guide](docs/api/README.md) and [OpenAPI contract](docs/api/openapi.yaml) for requests.
 
-- The current auth flow is intentionally stub-friendly for sprint delivery: you register a client profile, then sign in with that email.
-- Order placement executes immediately and persists order, fill, ledger, holding, and audit changes inside one Spring transaction.
-- The Fauxnance client is implemented with a best-effort JSON mapping. If your API returns a different payload shape, send me one example response and I can tighten the parser quickly.
+## Scope
+
+This is a local fixture demo: email-only sign-in and user-selected starting cash are not
+production authentication or banking. The PostgreSQL connection and core transaction tests
+are implemented; full BRD compliance also needs secure identity, wider market/currency
+support, isolated reporting, operational audit access and an additional capability.
+
+The older Python `api/`, `database/` scripts and `tests/test_*.py` are a separate prototype.
+They are not started or applied by this Spring application. The authoritative trading schema
+is `backend/rocket-trading/src/main/resources/db/migration/`.

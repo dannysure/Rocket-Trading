@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Rocket Trading API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Contract for the existing Spring Boot demo API. JSON numbers represent
     BigDecimal values; timestamps are UTC instants. Authentication is currently
@@ -136,12 +136,19 @@ paths:
     post:
       tags: [Orders]
       operationId: submitOrder
-      summary: Submit and immediately execute an order
+      summary: Accept an order for asynchronous execution
       description: |
-        Returns HTTP 202 although successful execution is synchronous and the
-        returned order is FILLED. A breached limit or insufficient cash/holdings
-        returns 409 ORDER_REJECTED. No idempotency key is implemented; do not
-        blindly retry submissions. Rejection exceptions roll back the transaction.
+        Valid orders commit as ACCEPTED before a background worker executes them.
+        Poll GET /orders or GET /orders/{orderId} for FILLED or REJECTED.
+        Business rejections return 409 ORDER_REJECTED and remain in order history.
+        Repeating a client-scoped Idempotency-Key with equivalent normalized details
+        returns the existing order (202, or 409 if rejected); changed details return
+        409 IDEMPOTENCY_CONFLICT. Reuse the key after network errors.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9._:-]+$'}
       requestBody:
         required: true
         content:
@@ -151,7 +158,7 @@ paths:
             example: {symbol: AAPL, side: BUY, quantity: 1, market: stock, orderType: MARKET}
       responses:
         '202':
-          description: Order executed
+          description: Accepted order, or the current state of an idempotent retry
           content:
             application/json:
               schema:
@@ -212,8 +219,8 @@ paths:
       operationId: listFills
       summary: List fills for an order
       description: |
-        Requires authentication, but the current implementation does not check
-        order ownership. Unknown orders return an empty array, not 404.
+        Only the authenticated owner can read fills. Unknown orders and orders
+        belonging to another client both return 404.
       parameters:
         - $ref: '#/components/parameters/OrderId'
       responses:
@@ -227,6 +234,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
 components:
@@ -254,12 +263,12 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/ApiErrorResponse'}
     NotFound:
-      description: ACCOUNT_NOT_FOUND or ORDER_NOT_FOUND
+      description: ACCOUNT_NOT_FOUND, ORDER_NOT_FOUND, or INSTRUMENT_NOT_FOUND
       content:
         application/json:
           schema: {$ref: '#/components/schemas/ApiErrorResponse'}
     Conflict:
-      description: CLIENT_ALREADY_EXISTS, ORDER_REJECTED, QUOTE_STALE, or CONFLICT
+      description: CLIENT_ALREADY_EXISTS, ORDER_REJECTED, IDEMPOTENCY_CONFLICT, QUOTE_STALE, QUOTE_INVALID, or CONFLICT
       content:
         application/json:
           schema: {$ref: '#/components/schemas/ApiErrorResponse'}
@@ -295,9 +304,9 @@ components:
     SubmitOrderRequest:
       type: object
       required: [symbol, side, quantity]
-      description: quantity is required for successful execution; missing/null currently causes 500 rather than 400.
+      description: Invalid or missing fields return 400. LIMIT requires a positive limitPrice; MARKET must omit it or send null.
       properties:
-        symbol: {type: string, minLength: 1, pattern: '\S', example: AAPL}
+        symbol: {type: string, minLength: 1, maxLength: 40, pattern: '\S', example: AAPL}
         side:
           type: string
           minLength: 1
@@ -307,7 +316,9 @@ components:
         quantity:
           type: number
           minimum: 0.000001
-          description: Rounded to six decimal places using HALF_UP.
+          maximum: 999999999999.999999
+          multipleOf: 0.000001
+          description: At most twelve integer digits and six fractional digits; excess precision is rejected.
         market:
           type: string
           nullable: true
@@ -321,7 +332,10 @@ components:
         limitPrice:
           type: number
           nullable: true
-          description: Only checked for LIMIT with a non-null price; positivity is not currently validated.
+          minimum: 0.0001
+          maximum: 999999999999.9999
+          multipleOf: 0.0001
+          description: Required for LIMIT; null or omitted for MARKET. Checked at acceptance and execution.
     ClientRegistrationResponse:
       type: object
       required: [clientId, name, email, registeredAt]

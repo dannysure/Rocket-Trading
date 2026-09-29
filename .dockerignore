@@ -8,3 +8,5 @@
 **/.gradle
 **/*.log
 backend/rocket-trading/.env
+
+.env

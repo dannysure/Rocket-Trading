@@ -14,8 +14,8 @@ import java.util.List;
 public interface OrderRepository {
 
     @Insert("""
-            insert into orders (client_id, account_id, instrument_id, order_side, order_type, requested_quantity, limit_price, order_status, rejection_reason)
-            values (#{clientId}, #{accountId}, #{instrumentId}, #{orderSide}, #{orderType}, #{requestedQuantity}, #{limitPrice}, #{orderStatus}, #{rejectionReason})
+            insert into orders (client_id, account_id, instrument_id, order_side, order_type, requested_quantity, limit_price, order_status, rejection_reason, market, idempotency_key, request_fingerprint)
+            values (#{clientId}, #{accountId}, #{instrumentId}, #{orderSide}, #{orderType}, #{requestedQuantity}, #{limitPrice}, #{orderStatus}, #{rejectionReason}, #{market}, #{idempotencyKey}, #{requestFingerprint})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "orderId")
     int insert(OrderRecord orderRecord);
@@ -29,7 +29,7 @@ public interface OrderRepository {
     int updateStatus(OrderRecord orderRecord);
 
     @Select("""
-            select o.order_id,
+            select o.order_id, o.market, o.idempotency_key, o.request_fingerprint,
                    o.client_id,
                    o.account_id,
                    o.instrument_id,
@@ -44,12 +44,12 @@ public interface OrderRepository {
             from orders o
             join financial_instruments fi on fi.instrument_id = o.instrument_id
             where o.client_id = #{clientId}
-            order by o.submitted_at desc
+            order by o.submitted_at desc, o.order_id desc
             """)
     List<OrderRecord> findByClientId(@Param("clientId") long clientId);
 
     @Select("""
-            select o.order_id,
+            select o.order_id, o.market, o.idempotency_key, o.request_fingerprint,
                    o.client_id,
                    o.account_id,
                    o.instrument_id,
@@ -67,4 +67,22 @@ public interface OrderRepository {
               and o.client_id = #{clientId}
             """)
     OrderRecord findByIdAndClientId(@Param("orderId") long orderId, @Param("clientId") long clientId);
+
+    @Select("""
+            select o.*, fi.ticker_symbol as symbol from orders o
+            join financial_instruments fi on fi.instrument_id = o.instrument_id
+            where o.client_id = #{clientId} and o.idempotency_key = #{key}
+            """)
+    OrderRecord findByIdempotencyKey(@Param("clientId") long clientId, @Param("key") String key);
+
+    @Select("select order_id from orders where order_status = 'ACCEPTED' order by order_id limit 100")
+    List<Long> findPendingIds();
+
+    @Select("""
+            select o.*, fi.ticker_symbol as symbol from orders o
+            join financial_instruments fi on fi.instrument_id = o.instrument_id
+            where o.order_id = #{orderId} and o.order_status = 'ACCEPTED'
+            for update of o skip locked
+            """)
+    OrderRecord lockAcceptedOrder(long orderId);
 }

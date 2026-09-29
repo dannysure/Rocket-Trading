@@ -49,7 +49,7 @@ public class FauxnanceQuoteClient implements QuoteProvider {
             }
 
             return mapQuoteResponse(body, symbol.toUpperCase());
-        } catch (RestClientException exception) {
+        } catch (RestClientException | IllegalArgumentException | java.time.DateTimeException exception) {
             throw new ExternalServiceException("PRICE_UNAVAILABLE",
                     "Could not retrieve a quote from Fauxnance at this time");
         }
@@ -58,6 +58,9 @@ public class FauxnanceQuoteClient implements QuoteProvider {
     Quote mapQuoteResponse(JsonNode body, String fallbackSymbol) {
         JsonNode payload = body.has("data") ? body.get("data") : body;
         JsonNode metadata = body.has("meta") ? body.get("meta") : body;
+        if (metadata.path("stale").asBoolean(false)) {
+            throw new ExternalServiceException("QUOTE_STALE", "Provider marked the quote stale");
+        }
         BigDecimal price = extractRequiredDecimal(payload, "price", "last", "lastPrice", "quote", "value");
         BigDecimal bid = extractOptionalDecimal(payload, price, "bid", "bestBid", "bidPrice");
         BigDecimal ask = extractOptionalDecimal(payload, price, "ask", "bestAsk", "askPrice");
@@ -66,9 +69,8 @@ public class FauxnanceQuoteClient implements QuoteProvider {
             capturedAt = extractInstantOrNull(payload, "timestamp", "capturedAt", "asOf");
         }
         if (capturedAt == null) {
-            capturedAt = Instant.now();
+            throw new ExternalServiceException("QUOTE_INVALID", "Quote must include a valid source timestamp");
         }
-        capturedAt = normalizeFreshCapturedAt(metadata, capturedAt);
 
         return new Quote(
                 extractText(payload, "symbol", fallbackSymbol),
@@ -111,17 +113,6 @@ public class FauxnanceQuoteClient implements QuoteProvider {
         return fallback;
     }
 
-    private Instant normalizeFreshCapturedAt(JsonNode metadata, Instant capturedAt) {
-        JsonNode stale = metadata.get("stale");
-        if (stale != null
-                && stale.isBoolean()
-                && !stale.asBoolean()
-                && capturedAt.isBefore(Instant.now().minusSeconds(fauxnanceProperties.getMaxAgeSeconds()))) {
-            return Instant.now();
-        }
-        return capturedAt;
-    }
-
     private long extractLong(JsonNode payload, String... fieldNames) {
         for (String fieldName : fieldNames) {
             JsonNode value = payload.get(fieldName);
@@ -130,11 +121,6 @@ public class FauxnanceQuoteClient implements QuoteProvider {
             }
         }
         return 0L;
-    }
-
-    private Instant extractInstant(JsonNode payload, String... fieldNames) {
-        Instant value = extractInstantOrNull(payload, fieldNames);
-        return value == null ? Instant.now() : value;
     }
 
     private Instant extractInstantOrNull(JsonNode payload, String... fieldNames) {

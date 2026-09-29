@@ -36,4 +36,11 @@ public interface ClientAccountRepository {
             where account_id = #{accountId}
             """)
     int updateCashBalance(@Param("accountId") long accountId, @Param("cashBalance") BigDecimal cashBalance);
+
+    @Select("""
+            select account_id, client_id, account_type, cash_balance, currency, opened_date
+            from client_accounts where client_id = #{clientId} and account_type = 'DIRECT_TRADING'
+            for update
+            """)
+    ClientAccountRecord lockDirectTradingAccount(long clientId);
 }

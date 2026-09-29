@@ -1,3 +1,5 @@
+> Historical Python analytics API, outside the active Spring trading startup. For the current API and database setup, see [the connection guide](db-backend-connection.md) and [Spring API guide](api/README.md). The root `.env.example` now configures Spring/Compose, not this prototype.
+
 # LEAP Analytics REST API Documentation
 
 ## Quick Start

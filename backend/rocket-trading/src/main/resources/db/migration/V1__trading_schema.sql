@@ -1,16 +1,4 @@
-DROP TABLE IF EXISTS audit_logs CASCADE;
-DROP TABLE IF EXISTS transactions CASCADE;
-DROP TABLE IF EXISTS fills CASCADE;
-DROP TABLE IF EXISTS orders CASCADE;
-DROP TABLE IF EXISTS market_quotes CASCADE;
-DROP TABLE IF EXISTS client_holdings CASCADE;
-DROP TABLE IF EXISTS account_holdings CASCADE;
-DROP TABLE IF EXISTS client_accounts CASCADE;
-DROP TABLE IF EXISTS financial_instruments CASCADE;
-DROP TABLE IF EXISTS client_sessions CASCADE;
-DROP TABLE IF EXISTS client_profiles CASCADE;
-DROP TABLE IF EXISTS financial_advisors CASCADE;
-
+-- Initial Spring trading schema. Never drop tables during application startup.
 CREATE TABLE financial_advisors (
     advisor_id          SERIAL PRIMARY KEY,
     advisor_full_name   TEXT NOT NULL,

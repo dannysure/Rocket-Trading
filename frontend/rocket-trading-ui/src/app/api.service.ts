@@ -5,6 +5,7 @@ import { environment } from '../environments/environment';
 import {
   ApiResponse,
   OrderResponse,
+  FillResponse,
   PortfolioSummaryResponse,
   QuoteResponse,
   RegisterClientRequest,
@@ -50,8 +51,14 @@ export class ApiService {
     });
   }
 
-  submitOrder(request: SubmitOrderRequest): Observable<ApiResponse<OrderResponse>> {
+  submitOrder(request: SubmitOrderRequest, idempotencyKey: string): Observable<ApiResponse<OrderResponse>> {
     return this.http.post<ApiResponse<OrderResponse>>(`${this.baseUrl}/orders`, request, {
+      headers: this.authHeaders(this.requireToken()).set('Idempotency-Key', idempotencyKey)
+    });
+  }
+
+  listFills(orderId: number): Observable<ApiResponse<FillResponse[]>> {
+    return this.http.get<ApiResponse<FillResponse[]>>(`${this.baseUrl}/fills/${orderId}`, {
       headers: this.authHeaders(this.requireToken())
     });
   }

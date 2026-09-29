@@ -22,13 +22,13 @@
     </div>
   </header>
 
-  <section *ngIf="infoMessage" class="banner success">{{ infoMessage }}</section>
-  <section *ngIf="errorMessage" class="banner error">{{ errorMessage }}</section>
+  <section role="status" *ngIf="infoMessage" class="banner success">{{ infoMessage }}</section>
+  <section role="alert" *ngIf="errorMessage" class="banner error">{{ errorMessage }}</section>
 
   <section class="grid">
     <article class="panel">
       <h2>1. Register fixture client</h2>
-      <form [formGroup]="registerForm" (ngSubmit)="register()" class="stack">
+      <form aria-label="Register" [formGroup]="registerForm" (ngSubmit)="register()" class="stack">
         <label>
           <span>Name</span>
           <input type="text" formControlName="name" />
@@ -53,18 +53,18 @@
           <span>Initial cash</span>
           <input type="number" formControlName="initialCash" step="0.01" />
         </label>
-        <button type="submit">Register</button>
+        <button type="submit" [disabled]="registerForm.invalid">Register</button>
       </form>
     </article>
 
     <article class="panel">
       <h2>2. Sign in</h2>
-      <form [formGroup]="signInForm" (ngSubmit)="signIn()" class="stack">
+      <form aria-label="Sign in" [formGroup]="signInForm" (ngSubmit)="signIn()" class="stack">
         <label>
           <span>Email</span>
           <input type="email" formControlName="email" />
         </label>
-        <button type="submit">Sign in</button>
+        <button type="submit" [disabled]="signInForm.invalid">Sign in</button>
       </form>
       <p class="hint">This sprint uses a fixture-backed auth flow: sign in with the email you registered above.</p>
     </article>
@@ -73,7 +73,7 @@
   <section class="grid">
     <article class="panel">
       <h2>3. Quote lookup</h2>
-      <form [formGroup]="quoteForm" (ngSubmit)="fetchQuote()" class="stack inline-form">
+      <form aria-label="Quote lookup" [formGroup]="quoteForm" (ngSubmit)="fetchQuote()" class="stack inline-form">
         <label>
           <span>Symbol</span>
           <input type="text" formControlName="symbol" />
@@ -85,7 +85,7 @@
             <option value="crypto">Crypto</option>
           </select>
         </label>
-        <button type="submit">Fetch quote</button>
+        <button type="submit" [disabled]="quoteForm.invalid || !session">Fetch quote</button>
       </form>
 
       <div *ngIf="quote" class="data-card">
@@ -101,7 +101,7 @@
 
     <article class="panel">
       <h2>4. Place order</h2>
-      <form [formGroup]="orderForm" (ngSubmit)="submitOrder()" class="stack">
+      <form aria-label="Place order" [formGroup]="orderForm" (ngSubmit)="submitOrder()" class="stack">
         <div class="two-col">
           <label>
             <span>Symbol</span>
@@ -141,7 +141,7 @@
             <input type="number" formControlName="limitPrice" step="0.0001" />
           </label>
         </div>
-        <button type="submit">Submit order</button>
+        <button type="submit" [disabled]="orderForm.invalid || !session || submitting">{{ submitting ? 'Submitting…' : 'Submit order' }}</button>
       </form>
     </article>
   </section>
@@ -186,6 +186,7 @@
             <th>Qty</th>
             <th>Status</th>
             <th>Submitted</th>
+            <th>Outcome</th>
           </tr>
         </thead>
         <tbody>
@@ -196,6 +197,12 @@
             <td>{{ order.quantity | number:'1.2-6' }}</td>
             <td>{{ order.status }}</td>
             <td>{{ order.submittedAt | date:'short' }}</td>
+            <td>
+              <span *ngIf="order.rejectionReason">{{ order.rejectionReason }}</span>
+              <span *ngFor="let fill of fills[order.orderId]">
+                {{ fill.executedQuantity | number:'1.0-6' }} &#64; {{ fill.executedPrice | number:'1.2-4' }}
+              </span>
+            </td>
           </tr>
         </tbody>
       </table>

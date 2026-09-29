@@ -11,6 +11,9 @@ public class AppConfig {
 
     @Bean
     RestClient fauxnanceRestClient(RestClient.Builder builder, FauxnanceProperties fauxnanceProperties) {
-        return builder.baseUrl(fauxnanceProperties.getBaseUrl()).build();
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(java.time.Duration.ofSeconds(3));
+        factory.setReadTimeout(java.time.Duration.ofSeconds(5));
+        return builder.requestFactory(factory).baseUrl(fauxnanceProperties.getBaseUrl()).build();
     }
 }
