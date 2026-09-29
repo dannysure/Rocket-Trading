@@ -1,0 +1,61 @@
+name: Trading verification
+on:
+  push:
+    branches: [develop, main, feature/db-backend-connection]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/rocket-trading-ui/package-lock.json
+      - name: Unit and PostgreSQL integration tests
+        working-directory: backend/rocket-trading
+        run: ./mvnw -B -ntp verify
+      - name: Frontend dependencies
+        working-directory: frontend/rocket-trading-ui
+        run: npm ci
+      - name: Frontend unit tests and production build
+        working-directory: frontend/rocket-trading-ui
+        run: |
+          npm run test:ci
+          npm run build
+      - name: Browser dependencies
+        working-directory: frontend/rocket-trading-ui
+        run: npx playwright install --with-deps chromium
+      - name: Start isolated browser test stack
+        run: |
+          docker compose -p rocket-trading-e2e -f docker-compose.yml -f compose.e2e.yaml up --build -d
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:4200/ > /dev/null && [ "$(curl --silent -o /dev/null -w '%{http_code}' http://localhost:4200/api/v1/orders)" = "401" ]; then exit 0; fi
+            sleep 2
+          done
+          docker compose -p rocket-trading-e2e -f docker-compose.yml -f compose.e2e.yaml logs
+          exit 1
+      - name: Browser trading flow
+        working-directory: frontend/rocket-trading-ui
+        run: npm run test:e2e
+      - name: Stop test stack
+        if: always()
+        run: docker compose -p rocket-trading-e2e -f docker-compose.yml -f compose.e2e.yaml down
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: trading-test-results
+          path: |
+            backend/rocket-trading/target/surefire-reports
+            backend/rocket-trading/target/failsafe-reports
+            frontend/rocket-trading-ui/playwright-report
+            frontend/rocket-trading-ui/test-results

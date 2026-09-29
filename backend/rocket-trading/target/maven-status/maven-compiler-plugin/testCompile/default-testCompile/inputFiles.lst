@@ -1,0 +1,8 @@
+C:\Users\Administrator\programming\Rocket-Trading\backend\rocket-trading\src\test\java\com\rockettrading\rocket_trading\architecture\TradingTddRoadmapTest.java
+C:\Users\Administrator\programming\Rocket-Trading\backend\rocket-trading\src\test\java\com\rockettrading\rocket_trading\controller\UserControllerTest.java
+C:\Users\Administrator\programming\Rocket-Trading\backend\rocket-trading\src\test\java\com\rockettrading\rocket_trading\futures\PerpetualFuturesApiClientTest.java
+C:\Users\Administrator\programming\Rocket-Trading\backend\rocket-trading\src\test\java\com\rockettrading\rocket_trading\futures\PerpetualFuturesCalculatorTest.java
+C:\Users\Administrator\programming\Rocket-Trading\backend\rocket-trading\src\test\java\com\rockettrading\rocket_trading\model\DomainModelStructureTest.java
+C:\Users\Administrator\programming\Rocket-Trading\backend\rocket-trading\src\test\java\com\rockettrading\rocket_trading\repository\UserRepositoryTest.java
+C:\Users\Administrator\programming\Rocket-Trading\backend\rocket-trading\src\test\java\com\rockettrading\rocket_trading\RocketTradingApplicationTests.java
+C:\Users\Administrator\programming\Rocket-Trading\backend\rocket-trading\src\test\java\com\rockettrading\rocket_trading\service\UserServiceTest.java

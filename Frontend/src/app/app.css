@@ -1,0 +1,336 @@
+:host {
+  display: block;
+  min-height: 100vh;
+  color: var(--text-primary);
+  background: var(--bg-dark);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+  padding: 1.2rem 3rem;
+  background: linear-gradient(to-r, #1a1a2e 0%, #16213e 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border: 2px solid rgba(59, 130, 246, 0.5);
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(147, 51, 234, 0.2));
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.05rem;
+  color: #60a5fa;
+}
+
+.brand-eyebrow {
+  margin: 0 0 0.1rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.12rem;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 600;
+}
+
+.brand-name {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.topnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+}
+
+.topnav a {
+  padding: 0.5rem 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.02rem;
+  transition: all 0.2s ease;
+}
+
+.topnav a:hover,
+.topnav a.active {
+  border-bottom-color: #60a5fa;
+  color: var(--text-primary);
+}
+
+.page {
+  width: min(1400px, 100%);
+  margin: 0 auto;
+  padding: 4rem 0;
+  text-align: center;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  align-items: center;
+  padding: 3rem;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(147, 51, 234, 0.05));
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 1rem;
+}
+
+.hero-copy {
+  text-align: left;
+}
+
+.hero-copy h1,
+.subpage h1,
+.overview-panel h2 {
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.hero-copy h1 {
+  font-size: clamp(2.2rem, 5vw, 3.8rem);
+  margin-bottom: 1.5rem;
+}
+
+.subpage h1 {
+  font-size: 2.5rem;
+}
+
+.section-label {
+  margin: 0 0 1rem;
+  color: #60a5fa;
+  text-transform: uppercase;
+  letter-spacing: 0.15rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.lead {
+  margin: 0;
+  max-width: 100%;
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.hero .lead {
+  text-align: left;
+  max-width: 95%;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 2rem;
+  justify-content: flex-start;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 12rem;
+  padding: 1rem 1.8rem;
+  text-decoration: none;
+  font-weight: 700;
+  letter-spacing: 0.01rem;
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+}
+
+.button-primary {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: var(--text-primary);
+  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.3);
+}
+
+.button-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(59, 130, 246, 0.4);
+}
+
+.button-secondary {
+  border: 2px solid #60a5fa;
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.button-secondary:hover {
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.market-card,
+.feature-card,
+.overview-panel {
+  background: linear-gradient(135deg, rgba(25, 30, 45, 0.8), rgba(20, 25, 40, 0.8));
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 0.75rem;
+}
+
+.market-card {
+  padding: 2rem;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5);
+  text-align: left;
+}
+
+.market-card h2,
+.feature-card h2,
+.overview-columns h3 {
+  margin-top: 0;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  align-items: center;
+}
+
+.metric-row:last-child {
+  border-bottom: 0;
+}
+
+.metric-up {
+  color: #22c55e;
+  font-weight: 700;
+}
+
+.metric-down {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  margin-top: 3rem;
+}
+
+.feature-card {
+  padding: 2rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.feature-card h2 {
+  font-size: 1.3rem;
+  margin-bottom: 1rem;
+}
+
+.feature-card p {
+  margin: 0;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.overview-panel {
+  margin-top: 3rem;
+  padding: 3rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.overview-panel h2 {
+  font-size: 2rem;
+}
+
+.overview-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3rem;
+  margin-top: 2rem;
+  text-align: left;
+}
+
+.overview-columns h3 {
+  font-size: 1.2rem;
+  margin-bottom: 1.2rem;
+}
+
+.overview-columns ul {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: var(--text-secondary);
+  line-height: 2;
+  list-style-type: disc;
+}
+
+.subpage {
+  padding-top: 2rem;
+}
+
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1.2rem 1.5rem;
+  }
+
+  .topnav {
+    gap: 1.5rem;
+  }
+
+  .page {
+    width: min(1200px, 100%);
+  }
+
+  .hero {
+    padding: 1.6rem;
+  }
+}

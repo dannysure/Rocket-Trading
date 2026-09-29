@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-team_rocket_db}
+      POSTGRES_USER: ${DB_USERNAME:-team_rocket_admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5435}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-team_rocket_db}
+      DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
+      DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
+      JWT_SECRET: ${JWT_SECRET:-change-me-development-jwt-secret-1234567890}
+      FAUXNANCE_API_KEY: ${FAUXNANCE_API_KEY:-}
+      FAUXNANCE_BASE_URL: ${FAUXNANCE_BASE_URL:-https://y4t9nq2bqf.execute-api.eu-west-2.amazonaws.com}
+      FAUXNANCE_STOCK_PATH: ${FAUXNANCE_STOCK_PATH:-/v1/quotes/{symbol}}
+      FAUXNANCE_CRYPTO_PATH: ${FAUXNANCE_CRYPTO_PATH:-/v1/quotes/{symbol}}
+      FAUXNANCE_MAX_AGE_SECONDS: ${FAUXNANCE_MAX_AGE_SECONDS:-60}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8081:8081"
+  ui:
+    build: ./frontend/rocket-trading-ui
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:4200:80"
+volumes:
+  postgres_data:

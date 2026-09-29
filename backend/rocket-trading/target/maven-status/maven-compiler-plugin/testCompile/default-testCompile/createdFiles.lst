@@ -1,0 +1,10 @@
+com\rockettrading\rocket_trading\architecture\TradingTddRoadmapTest$PortfolioAndHistory.class
+com\rockettrading\rocket_trading\architecture\TradingTddRoadmapTest$AuditAndReporting.class
+com\rockettrading\rocket_trading\service\UserServiceTest.class
+com\rockettrading\rocket_trading\RocketTradingApplicationTests.class
+com\rockettrading\rocket_trading\architecture\TradingTddRoadmapTest.class
+com\rockettrading\rocket_trading\architecture\TradingTddRoadmapTest$IdentityAndAccess.class
+com\rockettrading\rocket_trading\model\DomainModelStructureTest.class
+com\rockettrading\rocket_trading\repository\UserRepositoryTest.class
+com\rockettrading\rocket_trading\controller\UserControllerTest.class
+com\rockettrading\rocket_trading\architecture\TradingTddRoadmapTest$OrdersAndExecution.class
