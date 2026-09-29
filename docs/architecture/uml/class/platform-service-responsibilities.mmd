@@ -1,0 +1,66 @@
+classDiagram
+    class FrontendApp {
+        +registerClient()
+        +showIndicativePrice()
+        +submitOrder()
+        +displayPortfolio()
+        +showLiveStatus()
+    }
+
+    class ApiGateway {
+        +authenticate()
+        +authorizeClientScope()
+        +requestIndicativeQuote()
+        +placeOrder()
+        +streamOrderUpdates()mmdc -i .\docs\architecture\uml\class\trading-domain-model.mmd -o .\docs\architecture\uml\class\trading-domain-model.svg
+        +getPortfolioSnapshot()
+    }
+
+    class SessionService {
+        +createSession()
+        +validateSession()
+        +revokeSession()
+    }
+
+    class TradingCore {
+        +validateOrder()
+        +recordAcceptedOrder()
+        +executeOrder()
+        +updatePortfolioAtomically()
+    }
+
+    class MarketDataService {
+        +getIndicativeQuote()
+        +getExecutionQuote()
+    }
+
+    class TradingRepository {
+        +saveOrder()
+        +saveFill()
+        +savePortfolioMutation()
+    }
+
+    class AuditService {
+        +appendLifecycleEvent()
+        +reconstructTrade()
+    }
+
+    class EventBus {
+        +publishLifecycleEvent()
+        +publishReportingUpdate()
+    }
+
+    class ReportingService {
+        +consumeTradingEvents()
+        +buildProjection()
+        +serveBusinessInsights()
+    }
+
+    FrontendApp --> ApiGateway : uses
+    ApiGateway --> SessionService : validates
+    ApiGateway --> MarketDataService : requests quotes
+    ApiGateway --> TradingCore : orchestrates trading
+    TradingCore --> TradingRepository : persists
+    TradingCore --> AuditService : records audit trail
+    TradingCore --> EventBus : emits business events
+    EventBus --> ReportingService : notifies
