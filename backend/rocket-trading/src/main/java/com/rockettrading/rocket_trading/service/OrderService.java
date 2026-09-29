@@ -124,6 +124,16 @@ public class OrderService {
         return fillRepository.findByOrderId(orderId).stream().map(FillResponse::from).toList();
     }
 
+    public OrderTimelineResponse getOrderTimeline(long clientId, long orderId) {
+        getOrder(clientId, orderId);
+        return new OrderTimelineResponse(
+                orderId,
+                auditLogRepository.findTimelineForOrder(clientId, orderId).stream()
+                        .map(record -> OrderTimelineEventResponse.from(record, objectMapper))
+                        .toList()
+        );
+    }
+
     private void applyFill(OrderRecord order, ClientAccountRecord account, BigDecimal price, long quoteId) {
         BigDecimal notional = notional(order, price);
         FillRecord fill = new FillRecord();

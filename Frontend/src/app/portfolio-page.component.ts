@@ -1,266 +1,445 @@
-import { CommonModule, CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
-import { Component } from '@angular/core';
-
-interface Holding {
-  clientName: string;
-  ticker: string;
-  quantity: number;
-  latestPrice: number;
-  marketValue: number;
-  pctOfPortfolio: number;
-  costBasis: number;
-}
-
-interface PortfolioStat {
-  label: string;
-  value: string;
-  detail: string;
-}
-
-const HOLDINGS: Holding[] = [
-  {
-    clientName: 'Alex Morgan',
-    ticker: 'AAPL',
-    quantity: 145,
-    latestPrice: 340.12,
-    marketValue: 49317.4,
-    pctOfPortfolio: 18.2,
-    costBasis: 41850,
-  },
-  {
-    clientName: 'Alex Morgan',
-    ticker: 'MSFT',
-    quantity: 88,
-    latestPrice: 516.78,
-    marketValue: 45476.64,
-    pctOfPortfolio: 16.8,
-    costBasis: 39940,
-  },
-  {
-    clientName: 'Alex Morgan',
-    ticker: 'SPY',
-    quantity: 72,
-    latestPrice: 675.24,
-    marketValue: 48617.28,
-    pctOfPortfolio: 18.0,
-    costBasis: 45120,
-  },
-  {
-    clientName: 'Alex Morgan',
-    ticker: 'BTC-USD',
-    quantity: 0.82,
-    latestPrice: 83780.56,
-    marketValue: 68699.06,
-    pctOfPortfolio: 25.4,
-    costBasis: 58800,
-  },
-  {
-    clientName: 'Alex Morgan',
-    ticker: 'GLD',
-    quantity: 140,
-    latestPrice: 248.31,
-    marketValue: 34763.4,
-    pctOfPortfolio: 12.9,
-    costBasis: 31900,
-  },
-  {
-    clientName: 'Alex Morgan',
-    ticker: 'CASH',
-    quantity: 1,
-    latestPrice: 1,
-    marketValue: 15240.88,
-    pctOfPortfolio: 5.7,
-    costBasis: 15240.88,
-  },
-];
-
-const PORTFOLIO_STATS: PortfolioStat[] = [
-  { label: 'Net liquidation value', value: '$272,114', detail: '+8.4% YTD / +2.1% MTD' },
-  { label: 'Unrealized gain', value: '$18,245', detail: 'Average cost basis: $234,510 blended' },
-  { label: 'Cash available', value: '$15,241', detail: '5.7% of portfolio' },
-  { label: 'Largest position', value: 'BTC-USD', detail: '25.4% allocation' },
-];
+import { CommonModule, CurrencyPipe, DatePipe, JsonPipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, OnDestroy, OnInit, computed, inject, isDevMode, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { forkJoin, interval, Subscription, switchMap } from 'rxjs';
+import {
+  ClientProfile,
+  FillSummary,
+  IndicativeQuote,
+  OrderSummary,
+  OrderTimeline,
+  PortfolioSummary,
+  ReportingOverview,
+  SupportedInstrument,
+  TradingApiService,
+} from './trading-api.service';
 
 @Component({
   selector: 'app-portfolio-page',
   standalone: true,
-  imports: [CommonModule, CurrencyPipe, DatePipe, DecimalPipe],
+  imports: [CommonModule, ReactiveFormsModule, CurrencyPipe, DatePipe, JsonPipe],
   template: `
-    <main class="page subpage portfolio-page">
-      <section class="page-head">
-        <div>
-          <p class="section-label">Holdings overview</p>
-          <h1>Portfolio</h1>
+    <main class="page trading-page">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="section-label">Connected trading workflow</p>
+          <h1>Run the Spring API, sign in, place an order, and watch it settle live.</h1>
           <p class="lead">
-            A client-friendly snapshot of account value, allocations, concentration risk, and
-            current holdings. This view is built to help clients understand where capital is
-            deployed at a glance.
+            This page is now wired to the Spring Boot backend on port 8081 and reads persistent
+            state from PostgreSQL through the backend API.
           </p>
         </div>
 
-        <aside class="account-summary">
-          <p class="summary-kicker">Client</p>
-          <h2>Alex Morgan Household</h2>
-          <dl>
-            <div>
-              <dt>Reporting date</dt>
-              <dd>{{ reportDate | date : 'mediumDate' }}</dd>
+        <aside class="summary-card">
+          <p class="summary-kicker">Stack status</p>
+          <ng-container *ngIf="isSignedIn(); else signedOutState">
+            <h2>{{ profile()?.name ?? 'Signed in' }}</h2>
+            <dl>
+              <div>
+                <dt>Email</dt>
+                <dd>{{ profile()?.email ?? session()?.email }}</dd>
+              </div>
+              <div>
+                <dt>Client ID</dt>
+                <dd>{{ session()?.clientId }}</dd>
+              </div>
+              <div>
+                <dt>Session expires</dt>
+                <dd>{{ session()?.expiresAt | date : 'short' }}</dd>
+              </div>
+              <div>
+                <dt>Database-backed cash</dt>
+                <dd>
+                  {{
+                    (portfolio()?.cashBalance ?? 0)
+                      | currency : (portfolio()?.currency ?? 'USD') : 'symbol' : '1.2-2'
+                  }}
+                </dd>
+              </div>
+            </dl>
+            <div class="summary-actions">
+              <button class="button button-secondary" type="button" (click)="refreshDashboard()">
+                Refresh
+              </button>
+              <button class="button button-secondary" type="button" (click)="signOut()">
+                Sign out
+              </button>
             </div>
-            <div>
-              <dt>Base currency</dt>
-              <dd>USD</dd>
-            </div>
-            <div>
-              <dt>Risk profile</dt>
-              <dd>Balanced growth</dd>
-            </div>
-            <div>
-              <dt>Advisor</dt>
-              <dd>RTP Wealth Desk</dd>
-            </div>
-          </dl>
+          </ng-container>
+
+          <ng-template #signedOutState>
+            <h2>Backend ready for sign-in</h2>
+            <p class="summary-copy">
+              Start PostgreSQL and Spring Boot first, then register a fixture client below.
+            </p>
+          </ng-template>
         </aside>
       </section>
 
-      <section class="stats-grid" aria-label="Portfolio metrics">
-        <article class="stat-card" *ngFor="let stat of portfolioStats">
-          <p>{{ stat.label }}</p>
-          <strong>{{ stat.value }}</strong>
-          <span>{{ stat.detail }}</span>
-        </article>
-      </section>
+      <section class="banner notice" *ngIf="notice()">{{ notice() }}</section>
+      <section class="banner error" *ngIf="errorMessage()">{{ errorMessage() }}</section>
 
-      <section class="dashboard-grid">
+      <section class="auth-grid" *ngIf="!isSignedIn()">
         <article class="panel">
           <div class="panel-header">
             <div>
-              <p class="panel-kicker">Allocation mix</p>
-              <h2>Where the portfolio sits today</h2>
+              <p class="panel-kicker">Step 1</p>
+              <h2>Register a fixture client</h2>
             </div>
-            <span>Dummy data</span>
           </div>
 
-          <div class="allocation-list">
-            <div class="allocation-row" *ngFor="let holding of holdings">
-              <div class="allocation-labels">
-                <strong>{{ holding.ticker }}</strong>
-                <span>{{ holding.clientName }}</span>
-              </div>
-              <div class="allocation-bar" [style.--width.%]="holding.pctOfPortfolio">
-                <span></span>
-              </div>
-              <strong class="allocation-value">{{ holding.pctOfPortfolio | number : '1.1-1' }}%</strong>
-            </div>
-          </div>
+          <form [formGroup]="registerForm" (ngSubmit)="register()" class="form-grid">
+            <label>
+              <span>Name</span>
+              <input formControlName="name" placeholder="Joanna Trader" />
+            </label>
+
+            <label>
+              <span>Email</span>
+              <input formControlName="email" type="email" placeholder="joanna@example.com" />
+            </label>
+
+            <label>
+              <span>Initial cash</span>
+              <input formControlName="initialCash" type="number" min="0.01" step="0.01" />
+            </label>
+
+            <button class="button button-primary" type="submit" [disabled]="registerForm.invalid || busy()">
+              Register
+            </button>
+          </form>
         </article>
 
-        <article class="panel performance-panel">
+        <article class="panel">
           <div class="panel-header">
             <div>
-              <p class="panel-kicker">Portfolio analytics</p>
-              <h2>Useful client context</h2>
+              <p class="panel-kicker">Step 2</p>
+              <h2>Sign in and load live data</h2>
             </div>
           </div>
 
-          <div class="insight-card">
-            <h3>Concentration</h3>
-            <p>
-              The top three positions represent
-              <strong>{{ topThreeAllocation | number : '1.1-1' }}%</strong> of portfolio value.
-              Diversification is moderate, with crypto and equity exposure balanced by cash and gold.
-            </p>
-          </div>
+          <form [formGroup]="signInForm" (ngSubmit)="signIn()" class="form-grid">
+            <label>
+              <span>Email</span>
+              <input formControlName="email" type="email" placeholder="joanna@example.com" />
+            </label>
 
-          <div class="insight-card">
-            <h3>Risk check</h3>
-            <p>
-              BTC-USD is the largest position and the main source of volatility. The cash sleeve
-              provides flexibility for rebalancing and opportunity deployment.
-            </p>
-          </div>
-
-          <div class="insight-card">
-            <h3>Rebalancing note</h3>
-            <p>
-              Consider trimming gains from concentrated winners and re-adding to underweight
-              defensive assets if the portfolio drifts beyond target allocation bands.
-            </p>
-          </div>
+            <button class="button button-primary" type="submit" [disabled]="signInForm.invalid || busy()">
+              Sign in
+            </button>
+          </form>
         </article>
       </section>
 
-      <section class="panel table-panel">
-        <div class="panel-header">
-          <div>
-            <p class="panel-kicker">Current holdings</p>
-            <h2>Position detail</h2>
-          </div>
-          <span>{{ holdings.length }} holdings</span>
-        </div>
+      <ng-container *ngIf="isSignedIn()">
+        <section class="stats-grid">
+          <article class="stat-card">
+            <p>Cash balance</p>
+            <strong>
+              {{
+                (portfolio()?.cashBalance ?? 0)
+                  | currency : (portfolio()?.currency ?? 'USD') : 'symbol' : '1.2-2'
+              }}
+            </strong>
+            <span>Persisted in PostgreSQL</span>
+          </article>
+          <article class="stat-card">
+            <p>Positions</p>
+            <strong>{{ portfolio()?.positions?.length ?? 0 }}</strong>
+            <span>Read from /portfolio/summary</span>
+          </article>
+          <article class="stat-card">
+            <p>Orders</p>
+            <strong>{{ orders().length }}</strong>
+            <span>Automatic refresh while pending</span>
+          </article>
+          <article class="stat-card" *ngIf="reportingOverview() as reporting">
+            <p>Platform orders</p>
+            <strong>{{ reporting.totalOrders }}</strong>
+            <span>{{ reporting.activeClients }} active client(s) in reporting snapshot</span>
+          </article>
+        </section>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Client full name</th>
-                <th>Ticker symbol</th>
-                <th>Quantity</th>
-                <th>Latest price</th>
-                <th>Market value</th>
-                <th>% of portfolio</th>
-                <th>Gain / loss</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let holding of holdings">
-                <td>{{ holding.clientName }}</td>
-                <td>
-                  <span class="ticker-pill">{{ holding.ticker }}</span>
-                </td>
-                <td>{{ holding.quantity | number : '1.2-2' }}</td>
-                <td>{{ holding.latestPrice | currency : 'USD' : 'symbol' : '1.2-2' }}</td>
-                <td>{{ holding.marketValue | currency : 'USD' : 'symbol' : '1.2-2' }}</td>
-                <td>{{ holding.pctOfPortfolio | number : '1.1-1' }}%</td>
-                <td [class.is-positive]="positionGain(holding) >= 0" [class.is-negative]="positionGain(holding) < 0">
-                  {{ positionGain(holding) | currency : 'USD' : 'symbol' : '1.2-2' }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <section class="dashboard-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Step 3</p>
+                <h2>Trade ticket</h2>
+              </div>
+              <span>{{ instruments().length }} supported instruments</span>
+            </div>
+
+            <form [formGroup]="tradeForm" (ngSubmit)="submitOrder()" class="form-grid">
+              <label>
+                <span>Instrument</span>
+                <select formControlName="symbol" (change)="syncSelectedInstrument()">
+                  <option *ngFor="let instrument of instruments()" [value]="instrument.symbol">
+                    {{ instrument.symbol }} · {{ instrument.name }}
+                  </option>
+                </select>
+              </label>
+
+              <label>
+                <span>Side</span>
+                <select formControlName="side">
+                  <option value="BUY">BUY</option>
+                  <option value="SELL">SELL</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Quantity</span>
+                <input formControlName="quantity" type="number" min="0.000001" step="0.000001" />
+              </label>
+
+              <label>
+                <span>Order type</span>
+                <select formControlName="orderType">
+                  <option value="MARKET">MARKET</option>
+                  <option value="LIMIT">LIMIT</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Market</span>
+                <input formControlName="market" readonly />
+              </label>
+
+              <label *ngIf="tradeForm.controls.orderType.value === 'LIMIT'">
+                <span>Limit price</span>
+                <input formControlName="limitPrice" type="number" min="0.0001" step="0.0001" />
+              </label>
+
+              <div class="form-actions">
+                <button class="button button-secondary" type="button" (click)="refreshIndicativeQuote()">
+                  Refresh indicative quote
+                </button>
+                <button class="button button-primary" type="submit" [disabled]="tradeForm.invalid || busy()">
+                  Submit order
+                </button>
+              </div>
+            </form>
+
+            <div class="quote-card" *ngIf="indicativeQuote() as quote">
+              <h3>Indicative quote</h3>
+              <p>
+                {{ quote.symbol }} · Bid
+                {{ quote.bid | currency : 'USD' : 'symbol' : '1.2-2' }} · Ask
+                {{ quote.ask | currency : 'USD' : 'symbol' : '1.2-2' }}
+              </p>
+              <span>Captured {{ quote.capturedAt | date : 'short' }}</span>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">API coverage</p>
+                <h2>Supported catalogue</h2>
+              </div>
+            </div>
+
+            <div class="instrument-list">
+              <article class="instrument-pill" *ngFor="let instrument of instruments()">
+                <strong>{{ instrument.symbol }}</strong>
+                <span>{{ instrument.assetClass }} · {{ instrument.market }}</span>
+              </article>
+            </div>
+
+            <div class="insight-card" *ngIf="reportingOverview() as reporting">
+              <h3>Internal reporting snapshot</h3>
+              <p>
+                Filled orders: <strong>{{ reporting.filledOrders }}</strong> · Rejected orders:
+                <strong>{{ reporting.rejectedOrders }}</strong> · Total notional:
+                <strong>{{ reporting.totalNotional | currency : 'USD' : 'symbol' : '1.2-2' }}</strong>
+              </p>
+            </div>
+          </article>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Portfolio</p>
+                <h2>Positions and cash</h2>
+              </div>
+            </div>
+
+            <div class="empty-state" *ngIf="(portfolio()?.positions?.length ?? 0) === 0">
+              No positions yet. Submit a buy order and wait for it to fill.
+            </div>
+
+            <div class="table-wrap" *ngIf="(portfolio()?.positions?.length ?? 0) > 0">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Quantity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let position of portfolio()?.positions ?? []">
+                    <td><span class="ticker-pill">{{ position.symbol }}</span></td>
+                    <td>{{ position.quantity }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Blotter</p>
+                <h2>Orders and live status</h2>
+              </div>
+            </div>
+
+            <div class="empty-state" *ngIf="orders().length === 0">
+              No orders yet. Place an order to populate the blotter and audit trail.
+            </div>
+
+            <div class="table-wrap" *ngIf="orders().length > 0">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Order</th>
+                    <th>Symbol</th>
+                    <th>Side</th>
+                    <th>Quantity</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let order of orders()">
+                    <td>#{{ order.orderId }}</td>
+                    <td>{{ order.symbol }}</td>
+                    <td>{{ order.side }}</td>
+                    <td>{{ order.quantity }}</td>
+                    <td>
+                      <span class="status-pill" [class.is-rejected]="order.status === 'REJECTED'">
+                        {{ order.status }}
+                      </span>
+                    </td>
+                    <td>{{ order.submittedAt | date : 'short' }}</td>
+                    <td>
+                      <button class="inline-button" type="button" (click)="selectOrder(order.orderId)">
+                        Details
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="dashboard-grid" *ngIf="selectedOrder()">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Selected order</p>
+                <h2>Fills</h2>
+              </div>
+              <span>#{{ selectedOrder()?.orderId }}</span>
+            </div>
+
+            <div class="empty-state" *ngIf="fills().length === 0">
+              No fills recorded yet for this order.
+            </div>
+
+            <ul class="detail-list" *ngIf="fills().length > 0">
+              <li *ngFor="let fill of fills()">
+                Fill {{ fill.fillId }} · {{ fill.executedQuantity }} @
+                {{ fill.executedPrice | currency : 'USD' : 'symbol' : '1.2-2' }} ·
+                {{ fill.executedAt | date : 'short' }}
+              </li>
+            </ul>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Audit trail</p>
+                <h2>Order timeline</h2>
+              </div>
+            </div>
+
+            <div class="empty-state" *ngIf="!(timeline()?.events?.length)">
+              No audit events returned for this order yet.
+            </div>
+
+            <ul class="timeline" *ngIf="timeline()?.events?.length">
+              <li *ngFor="let event of timeline()?.events ?? []">
+                <div class="timeline-head">
+                  <strong>{{ event.entityName }}</strong>
+                  <span>{{ event.recordedAt | date : 'short' }}</span>
+                </div>
+                <p>{{ event.actionType }} · entity #{{ event.entityId }}</p>
+                <details>
+                  <summary>State after</summary>
+                  <pre>{{ event.stateAfter | json }}</pre>
+                </details>
+              </li>
+            </ul>
+          </article>
+        </section>
+      </ng-container>
     </main>
   `,
   styles: [
     `
-      .portfolio-page {
-        width: min(1480px, 100%);
+      .trading-page {
+        width: min(1400px, 100%);
+        text-align: left;
       }
 
-      .page-head {
+      .hero,
+      .auth-grid,
+      .dashboard-grid,
+      .stats-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.7fr);
         gap: 1.5rem;
-        align-items: start;
       }
 
-      .account-summary,
+      .hero,
+      .dashboard-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .auth-grid,
+      .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+
+      .hero-copy,
+      .summary-card,
       .panel,
-      .stat-card {
+      .stat-card,
+      .banner {
         border: 1px solid rgba(59, 130, 246, 0.16);
         border-radius: 1rem;
-        background: linear-gradient(135deg, rgba(25, 30, 45, 0.85), rgba(20, 25, 40, 0.85));
+        background: linear-gradient(135deg, rgba(25, 30, 45, 0.88), rgba(20, 25, 40, 0.88));
         box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
       }
 
-      .account-summary {
+      .hero-copy,
+      .summary-card,
+      .panel,
+      .stat-card,
+      .banner {
         padding: 1.5rem;
       }
 
       .summary-kicker,
       .panel-kicker,
       .section-label {
-        margin: 0 0 0.85rem;
+        margin: 0 0 0.75rem;
         color: #60a5fa;
         text-transform: uppercase;
         letter-spacing: 0.15rem;
@@ -268,156 +447,101 @@ const PORTFOLIO_STATS: PortfolioStat[] = [
         font-weight: 800;
       }
 
-      .page-head h1,
-      .panel h2,
-      .insight-card h3 {
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      .lead,
+      .summary-copy,
+      .insight-card p,
+      .timeline p,
+      .detail-list,
+      label span {
+        color: var(--text-secondary);
+      }
+
+      .summary-card dl {
+        display: grid;
+        gap: 0.75rem;
         margin: 0;
-        color: var(--text-primary);
-        line-height: 1.15;
-        font-weight: 800;
-        letter-spacing: -0.02em;
       }
 
-      .page-head h1 {
-        font-size: clamp(2.2rem, 4vw, 3.8rem);
-      }
-
-      .lead {
-        max-width: 68ch;
-        margin: 1rem 0 0;
-        color: var(--text-secondary);
-        line-height: 1.8;
-        font-size: 1.05rem;
-      }
-
-      .account-summary dl {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 1rem;
-        margin: 1.25rem 0 0;
-      }
-
-      .account-summary dt {
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08rem;
-        color: var(--text-secondary);
-      }
-
-      .account-summary dd {
-        margin: 0.3rem 0 0;
-        color: var(--text-primary);
-        font-weight: 700;
-      }
-
-      .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 1rem;
-        margin-top: 1.5rem;
-      }
-
-      .stat-card {
-        padding: 1.25rem;
-      }
-
-      .stat-card p,
-      .stat-card span,
-      .allocation-labels span,
-      .table-panel th {
-        color: var(--text-secondary);
-      }
-
-      .stat-card strong {
-        display: block;
-        margin: 0.55rem 0 0.35rem;
-        color: var(--text-primary);
-        font-size: 1.5rem;
-      }
-
-      .dashboard-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-        gap: 1rem;
-        margin-top: 1.5rem;
-      }
-
-      .panel {
-        padding: 1.25rem;
-      }
-
-      .panel-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 1rem;
-        margin-bottom: 1rem;
-      }
-
-      .panel-header span {
+      .summary-card dt {
         color: var(--text-secondary);
         font-size: 0.85rem;
       }
 
-      .allocation-list,
-      .insight-card {
-        display: grid;
-        gap: 1rem;
+      .summary-card dd {
+        margin: 0.25rem 0 0;
+        font-weight: 700;
       }
 
-      .allocation-row {
-        display: grid;
-        grid-template-columns: 140px minmax(0, 1fr) 70px;
-        gap: 1rem;
-        align-items: center;
+      .summary-actions,
+      .form-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 1rem;
       }
 
-      .allocation-labels strong {
-        display: block;
-        color: var(--text-primary);
-      }
-
-      .allocation-bar {
-        position: relative;
-        height: 0.8rem;
-        overflow: hidden;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.06);
-      }
-
-      .allocation-bar span {
-        position: absolute;
-        inset: 0 auto 0 0;
-        width: calc(var(--width) * 1%);
-        border-radius: inherit;
-        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-      }
-
-      .allocation-value {
-        text-align: right;
-        color: var(--text-primary);
-      }
-
-      .performance-panel {
-        display: grid;
-        gap: 1rem;
-      }
-
-      .insight-card {
-        padding: 1rem;
-        border-radius: 0.9rem;
-        background: rgba(12, 16, 28, 0.7);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-      }
-
-      .insight-card p {
-        margin: 0;
-        color: var(--text-secondary);
-        line-height: 1.7;
-      }
-
-      .table-panel {
+      .banner {
         margin-top: 1.5rem;
+      }
+
+      .banner.notice {
+        border-color: rgba(34, 197, 94, 0.35);
+      }
+
+      .banner.error {
+        border-color: rgba(239, 68, 68, 0.35);
+      }
+
+      .form-grid {
+        display: grid;
+        gap: 1rem;
+      }
+
+      label {
+        display: grid;
+        gap: 0.4rem;
+      }
+
+      input,
+      select {
+        width: 100%;
+        padding: 0.85rem 0.9rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 0.75rem;
+        background: rgba(9, 9, 11, 0.7);
+        color: var(--text-primary);
+      }
+
+      .instrument-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 0.75rem;
+      }
+
+      .instrument-pill,
+      .insight-card,
+      .quote-card {
+        padding: 1rem;
+        border-radius: 0.85rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(9, 9, 11, 0.45);
+      }
+
+      .instrument-pill {
+        display: grid;
+        gap: 0.25rem;
+      }
+
+      .empty-state {
+        padding: 1rem 0;
+        color: var(--text-secondary);
       }
 
       .table-wrap {
@@ -434,75 +558,366 @@ const PORTFOLIO_STATS: PortfolioStat[] = [
         padding: 0.9rem 0.75rem;
         border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         text-align: left;
-        white-space: nowrap;
       }
 
       th {
-        font-size: 0.78rem;
+        color: var(--text-secondary);
+        font-size: 0.85rem;
         text-transform: uppercase;
-        letter-spacing: 0.08rem;
-        font-weight: 700;
+        letter-spacing: 0.05rem;
       }
 
-      td {
-        color: var(--text-primary);
-      }
-
-      .ticker-pill {
+      .ticker-pill,
+      .status-pill {
         display: inline-flex;
         align-items: center;
-        padding: 0.3rem 0.6rem;
+        padding: 0.25rem 0.65rem;
         border-radius: 999px;
-        background: rgba(59, 130, 246, 0.14);
-        color: #bfdbfe;
-        font-size: 0.8rem;
-        font-weight: 800;
+        background: rgba(59, 130, 246, 0.15);
       }
 
-      .is-positive {
-        color: #22c55e;
-        font-weight: 700;
+      .status-pill.is-rejected {
+        background: rgba(239, 68, 68, 0.16);
       }
 
-      .is-negative {
-        color: #ef4444;
-        font-weight: 700;
+      .inline-button {
+        color: #60a5fa;
+        background: transparent;
+        border: none;
+        cursor: pointer;
       }
 
-      @media (max-width: 1100px) {
-        .stats-grid,
-        .dashboard-grid,
-        .page-head {
+      .timeline,
+      .detail-list {
+        margin: 0;
+        padding-left: 1.2rem;
+      }
+
+      .timeline li,
+      .detail-list li {
+        margin-bottom: 0.9rem;
+      }
+
+      .timeline-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+        background: rgba(9, 9, 11, 0.7);
+        color: #dbeafe;
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .dashboard-grid {
           grid-template-columns: 1fr;
-        }
-      }
-
-      @media (max-width: 760px) {
-        .account-summary dl {
-          grid-template-columns: 1fr;
-        }
-
-        .allocation-row {
-          grid-template-columns: 1fr;
-        }
-
-        .allocation-value {
-          text-align: left;
         }
       }
     `,
   ],
 })
-export class PortfolioPageComponent {
-  readonly holdings = HOLDINGS;
-  readonly portfolioStats = PORTFOLIO_STATS;
-  readonly reportDate = new Date('2026-09-25T17:43:23Z');
+export class PortfolioPageComponent implements OnInit, OnDestroy {
+  private readonly tradingApi = inject(TradingApiService);
+  private readonly formBuilder = inject(FormBuilder);
 
-  get topThreeAllocation(): number {
-    return this.holdings.slice(0, 3).reduce((sum, holding) => sum + holding.pctOfPortfolio, 0);
+  readonly session = this.tradingApi.session;
+  readonly isSignedIn = this.tradingApi.isSignedIn;
+  readonly profile = signal<ClientProfile | null>(null);
+  readonly instruments = signal<SupportedInstrument[]>([]);
+  readonly portfolio = signal<PortfolioSummary | null>(null);
+  readonly orders = signal<OrderSummary[]>([]);
+  readonly fills = signal<FillSummary[]>([]);
+  readonly timeline = signal<OrderTimeline | null>(null);
+  readonly indicativeQuote = signal<IndicativeQuote | null>(null);
+  readonly reportingOverview = signal<ReportingOverview | null>(null);
+  readonly selectedOrderId = signal<number | null>(null);
+  readonly notice = signal<string | null>(null);
+  readonly errorMessage = signal<string | null>(null);
+  readonly busy = signal(false);
+  readonly selectedOrder = computed(() =>
+    this.orders().find((order) => order.orderId === this.selectedOrderId()) ?? null,
+  );
+
+  readonly registerForm = this.formBuilder.nonNullable.group({
+    name: ['', [Validators.required]],
+    email: ['', [Validators.required, Validators.email]],
+    initialCash: [10000, [Validators.required, Validators.min(0.01)]],
+  });
+
+  readonly signInForm = this.formBuilder.nonNullable.group({
+    email: ['', [Validators.required, Validators.email]],
+  });
+
+  readonly tradeForm = this.formBuilder.nonNullable.group({
+    symbol: ['AAPL', [Validators.required]],
+    side: ['BUY', [Validators.required]],
+    quantity: [1, [Validators.required, Validators.min(0.000001)]],
+    market: ['stock', [Validators.required]],
+    orderType: ['MARKET', [Validators.required]],
+    limitPrice: [''],
+  });
+
+  private pollSubscription?: Subscription;
+
+  ngOnInit() {
+    if (this.session()) {
+      this.signInForm.patchValue({ email: this.session()?.email ?? '' });
+      this.loadDashboard();
+    }
   }
 
-  positionGain(holding: Holding): number {
-    return holding.marketValue - holding.costBasis;
+  ngOnDestroy() {
+    this.stopPolling();
+  }
+
+  register() {
+    if (this.registerForm.invalid) {
+      return;
+    }
+
+    this.setBusy();
+    const { name, email, initialCash } = this.registerForm.getRawValue();
+    this.tradingApi.register({ name, email, initialCash }).subscribe({
+      next: () => {
+        this.signInForm.patchValue({ email });
+        this.notice.set('Registration succeeded. Sign in next to open the trading dashboard.');
+        this.errorMessage.set(null);
+        this.clearBusy();
+      },
+      error: (error) => this.failRequest(error),
+    });
+  }
+
+  signIn() {
+    if (this.signInForm.invalid) {
+      return;
+    }
+
+    this.setBusy();
+    const { email } = this.signInForm.getRawValue();
+    this.tradingApi.signIn(email).subscribe({
+      next: () => {
+        this.notice.set('Signed in. Loading live portfolio, orders, and reporting data.');
+        this.errorMessage.set(null);
+        this.clearBusy();
+        this.loadDashboard();
+      },
+      error: (error) => this.failRequest(error),
+    });
+  }
+
+  signOut() {
+    this.tradingApi.signOut().subscribe({
+      next: () => this.resetSession('Signed out.'),
+      error: () => this.resetSession('Local session cleared after sign-out attempt.'),
+    });
+  }
+
+  refreshDashboard() {
+    this.loadDashboard();
+  }
+
+  syncSelectedInstrument() {
+    const selected = this.instruments().find(
+      (instrument) => instrument.symbol === this.tradeForm.controls.symbol.value,
+    );
+    if (!selected) {
+      return;
+    }
+
+    this.tradeForm.patchValue({ market: selected.market });
+  }
+
+  refreshIndicativeQuote() {
+    const { symbol, market } = this.tradeForm.getRawValue();
+    this.tradingApi.getIndicativeQuote(symbol, market).subscribe({
+      next: (response) => {
+        this.indicativeQuote.set(response.data);
+        this.errorMessage.set(null);
+      },
+      error: (error) => this.failRequest(error),
+    });
+  }
+
+  submitOrder() {
+    if (this.tradeForm.invalid) {
+      return;
+    }
+
+    const limitPriceText = this.tradeForm.controls.limitPrice.value.trim();
+    const request = {
+      symbol: this.tradeForm.controls.symbol.value,
+      side: this.tradeForm.controls.side.value,
+      quantity: this.tradeForm.controls.quantity.value,
+      market: this.tradeForm.controls.market.value,
+      orderType: this.tradeForm.controls.orderType.value,
+      limitPrice:
+        this.tradeForm.controls.orderType.value === 'LIMIT' && limitPriceText
+          ? Number(limitPriceText)
+          : null,
+    };
+
+    if (request.orderType === 'LIMIT' && request.limitPrice === null) {
+      this.errorMessage.set('Limit orders require a limit price.');
+      return;
+    }
+
+    this.setBusy();
+    this.tradingApi.submitOrder(request).subscribe({
+      next: (response) => {
+        this.notice.set(`Order #${response.data.orderId} accepted. Polling for status updates.`);
+        this.errorMessage.set(null);
+        this.clearBusy();
+        this.selectedOrderId.set(response.data.orderId);
+        this.loadDashboard();
+        this.selectOrder(response.data.orderId);
+      },
+      error: (error) => this.failRequest(error),
+    });
+  }
+
+  selectOrder(orderId: number) {
+    this.selectedOrderId.set(orderId);
+    forkJoin({
+      fills: this.tradingApi.listFills(orderId),
+      timeline: this.tradingApi.getOrderTimeline(orderId),
+    }).subscribe({
+      next: ({ fills, timeline }) => {
+        this.fills.set(fills.data);
+        this.timeline.set(timeline.data);
+        this.errorMessage.set(null);
+      },
+      error: (error) => this.failRequest(error),
+    });
+  }
+
+  private loadDashboard() {
+    forkJoin({
+      profile: this.tradingApi.getProfile(),
+      instruments: this.tradingApi.listSupportedInstruments(),
+      portfolio: this.tradingApi.getPortfolioSummary(),
+      orders: this.tradingApi.listOrders(),
+      reporting: this.tradingApi.getReportingOverview(),
+    }).subscribe({
+      next: ({ profile, instruments, portfolio, orders, reporting }) => {
+        this.profile.set(profile.data);
+        this.instruments.set(instruments.data);
+        this.portfolio.set(portfolio.data);
+        this.orders.set(orders.data);
+        this.reportingOverview.set(reporting.data);
+        this.errorMessage.set(null);
+        this.syncSelectedInstrument();
+        this.updatePolling(orders.data);
+
+        const currentSelection = this.selectedOrderId();
+        if (currentSelection !== null) {
+          const stillVisible = orders.data.find((order) => order.orderId === currentSelection);
+          if (stillVisible) {
+            this.selectOrder(currentSelection);
+          }
+        }
+      },
+      error: (error) => this.failRequest(error),
+    });
+  }
+
+  private updatePolling(orders: OrderSummary[]) {
+    const hasPendingOrders = orders.some(
+      (order) => order.status === 'ACCEPTED' || order.status === 'SUBMITTED',
+    );
+
+    if (!hasPendingOrders || typeof window === 'undefined') {
+      this.stopPolling();
+      return;
+    }
+
+    if (this.pollSubscription) {
+      return;
+    }
+
+    this.pollSubscription = interval(2000)
+      .pipe(
+        switchMap(() =>
+          forkJoin({
+            portfolio: this.tradingApi.getPortfolioSummary(),
+            orders: this.tradingApi.listOrders(),
+            reporting: this.tradingApi.getReportingOverview(),
+          }),
+        ),
+      )
+      .subscribe({
+        next: ({ portfolio, orders, reporting }) => {
+          this.portfolio.set(portfolio.data);
+          this.orders.set(orders.data);
+          this.reportingOverview.set(reporting.data);
+          if (this.selectedOrderId() !== null) {
+            this.selectOrder(this.selectedOrderId()!);
+          }
+          if (!orders.data.some((order) => order.status === 'ACCEPTED' || order.status === 'SUBMITTED')) {
+            this.stopPolling();
+          }
+        },
+        error: (error) => this.failRequest(error),
+      });
+  }
+
+  private stopPolling() {
+    this.pollSubscription?.unsubscribe();
+    this.pollSubscription = undefined;
+  }
+
+  private resetSession(message: string) {
+    this.tradingApi.clearSession();
+    this.stopPolling();
+    this.profile.set(null);
+    this.instruments.set([]);
+    this.portfolio.set(null);
+    this.orders.set([]);
+    this.fills.set([]);
+    this.timeline.set(null);
+    this.indicativeQuote.set(null);
+    this.reportingOverview.set(null);
+    this.selectedOrderId.set(null);
+    this.notice.set(message);
+    this.errorMessage.set(null);
+  }
+
+  private failRequest(error: unknown) {
+    this.clearBusy();
+    this.errorMessage.set(this.describeError(error));
+    if (isDevMode()) {
+      console.error(error);
+    }
+  }
+
+  private describeError(error: unknown): string {
+    if (error instanceof HttpErrorResponse) {
+      const apiMessage =
+        typeof error.error === 'object' && error.error?.error?.message
+          ? error.error.error.message
+          : null;
+      return apiMessage ?? error.message;
+    }
+
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return 'The request could not be completed.';
+  }
+
+  private setBusy() {
+    this.busy.set(true);
+    this.notice.set(null);
+    this.errorMessage.set(null);
+  }
+
+  private clearBusy() {
+    this.busy.set(false);
   }
 }

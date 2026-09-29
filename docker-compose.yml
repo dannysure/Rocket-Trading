@@ -34,10 +34,10 @@ services:
     ports:
       - "127.0.0.1:8081:8081"
   ui:
-    build: ./frontend/rocket-trading-ui
+    build: ./Frontend
     depends_on:
       - api
     ports:
-      - "127.0.0.1:4200:80"
+      - "127.0.0.1:4200:4000"
 volumes:
   postgres_data:
