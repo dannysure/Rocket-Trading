@@ -65,25 +65,28 @@ npm run build
 
 
 Start containerized application on linux vm:
-**make sure to change fauxnanca API key**
+clone the repo into linux vm
 ```sh
 cd Rocket-Trading/
+
 # Set FAUXNANCE_API_KEY in .env 
 cp.env.example .env
 sed -i 's/^FAUXNANCE_API_KEY=.*/FAUXNANCE_API_KEY=your_real_api_key_here/' .env
 grep FAUXNANCE_API_KEY .env
 
 #start dockerized application
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo systemctl status docker
 docker-compose up --build -d
 
 #enable ssh port forwarding to access the ui, api, and db from your local machine
-ssh -L 4200:127.0.0.1:4200 -L 8081:127.0.0.1:8081 -L 5435:127.0.0.1:5435 ec2-user@your-vm-ip
+ssh -L 4200:127.0.0.1:4200 -L 8081:127.0.0.1:8081 -L 5435:127.0.0.1:5435 ec2-user@YOUR_VM_IP
 
 #open your browser and go to http://localhost:4200 to access the UI
-#use application
+
 #check changes in postgres db
 docker-compose exec db psql -U team_rocket_admin -d team_rocket_db
-#run queries to check the data
 ```
 
 
