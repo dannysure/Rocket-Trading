@@ -1,0 +1,313 @@
+{
+  "info": {
+    "_postman_id": "rocket-trading-api",
+    "name": "Rocket Trading Platform API",
+    "description": "Complete API collection for testing the Rocket Trading Platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register Client",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"dateOfBirth\": \"1990-01-15\",\n  \"riskProfile\": \"Balanced\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Sign In",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/sign-in",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "sign-in"]
+            }
+          }
+        },
+        {
+          "name": "Sign Out",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/sign-out",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "sign-out"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Portfolio",
+      "item": [
+        {
+          "name": "Get Portfolio Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/portfolio/summary",
+              "host": ["{{base_url}}"],
+              "path": ["portfolio", "summary"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Submit Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$timestamp}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"instrumentId\": 1,\n  \"side\": \"BUY\",\n  \"quantity\": 10,\n  \"orderType\": \"MARKET\",\n  \"accountId\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/orders",
+              "host": ["{{base_url}}"],
+              "path": ["orders"]
+            }
+          }
+        },
+        {
+          "name": "List Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders",
+              "host": ["{{base_url}}"],
+              "path": ["orders"]
+            }
+          }
+        },
+        {
+          "name": "Get Order by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/1",
+              "host": ["{{base_url}}"],
+              "path": ["orders", "1"]
+            }
+          }
+        },
+        {
+          "name": "Get Order Fills",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fills/1",
+              "host": ["{{base_url}}"],
+              "path": ["fills", "1"]
+            }
+          }
+        },
+        {
+          "name": "Get Order Timeline",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/1/timeline",
+              "host": ["{{base_url}}"],
+              "path": ["orders", "1", "timeline"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quotes",
+      "item": [
+        {
+          "name": "Get Quote",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quotes/AAPL",
+              "host": ["{{base_url}}"],
+              "path": ["quotes", "AAPL"]
+            }
+          }
+        },
+        {
+          "name": "List Instruments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quotes/instruments",
+              "host": ["{{base_url}}"],
+              "path": ["quotes", "instruments"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reporting",
+      "item": [
+        {
+          "name": "Get Reporting Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reporting/overview?from=2024-01-01&to=2024-12-31",
+              "host": ["{{base_url}}"],
+              "path": ["reporting", "overview"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2024-01-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2024-12-31"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Order Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reporting/orders",
+              "host": ["{{base_url}}"],
+              "path": ["reporting", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Get Client Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reporting/clients",
+              "host": ["{{base_url}}"],
+              "path": ["reporting", "clients"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8081/api/v1"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    }
+  ]
+}
