@@ -44,43 +44,25 @@ export class OAuthService {
   readonly session = this.sessionState.asReadonly();
   readonly isSignedIn = signal(this.sessionState() !== null);
 
-  // Supported OAuth providers
+  // Supported OAuth providers (GitHub only)
   readonly oauthProviders: OAuthProvider[] = [
-    {
-      id: 'google',
-      name: 'Google',
-      icon: '🔍',
-      color: '#4285F4'
-    },
     {
       id: 'github',
       name: 'GitHub',
       icon: '🐙',
       color: '#333'
-    },
-    {
-      id: 'microsoft',
-      name: 'Microsoft',
-      icon: '⊞',
-      color: '#0078D4'
     }
   ];
 
   /**
    * Initiate OAuth login flow
-   * Redirects user to OAuth provider authorization endpoint
+   * Redirects user to Spring Security OAuth2 authorization endpoint
    */
   initiateOAuthLogin(provider: string): void {
-    const authEndpoint = `${API_BASE_URL}/auth/oauth2/authorization/${provider}`;
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: `oauth-${provider}`,
-      redirect_uri: OAUTH_REDIRECT_URI,
-      scope: 'openid profile email',
-      state: this.generateState()
-    });
-
-    window.location.href = `${authEndpoint}?${params.toString()}`;
+    // Spring Security OAuth2 endpoint: /oauth2/authorization/{registrationId}
+    // API_BASE_URL already includes /api/v1 prefix
+    const authEndpoint = `${API_BASE_URL}/oauth2/authorization/${provider}`;
+    window.location.href = authEndpoint;
   }
 
   /**
@@ -203,6 +185,10 @@ export class OAuthService {
    */
   private readSession(): OAuthSession | null {
     try {
+      // Check if sessionStorage is available (not in server-side rendering)
+      if (typeof sessionStorage === 'undefined') {
+        return null;
+      }
       const stored = sessionStorage.getItem(SESSION_STORAGE_KEY);
       if (!stored) return null;
       return JSON.parse(stored);
@@ -217,6 +203,10 @@ export class OAuthService {
    */
   private writeSession(session: OAuthSession | null): void {
     try {
+      // Check if sessionStorage is available (not in server-side rendering)
+      if (typeof sessionStorage === 'undefined') {
+        return;
+      }
       if (session === null) {
         sessionStorage.removeItem(SESSION_STORAGE_KEY);
       } else {

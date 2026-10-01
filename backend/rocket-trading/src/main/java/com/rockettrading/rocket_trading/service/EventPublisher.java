@@ -3,6 +3,7 @@ package com.rockettrading.rocket_trading.service;
 import com.rockettrading.rocket_trading.event.OrderFilledEvent;
 import com.rockettrading.rocket_trading.event.OrderSubmittedEvent;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.Message;
@@ -14,9 +15,12 @@ import java.util.UUID;
 /**
  * Service to publish trading events to Kafka
  * Handles: order submissions, fills, rejections, portfolio updates
+ * 
+ * Disabled when kafka.enabled=false (for local development without Kafka)
  */
 @Slf4j
 @Service
+@ConditionalOnProperty(name = "kafka.enabled", havingValue = "true", matchIfMissing = true)
 public class EventPublisher {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
@@ -33,7 +37,7 @@ public class EventPublisher {
         Message<OrderSubmittedEvent> message = MessageBuilder
                 .withPayload(event)
                 .setHeader(KafkaHeaders.TOPIC, "order-submitted")
-                .setHeader(KafkaHeaders.MESSAGE_KEY, String.valueOf(event.getClientId()))
+                .setHeader("kafka_messageKey", String.valueOf(event.getClientId()))
                 .build();
 
         kafkaTemplate.send(message).whenComplete((result, ex) -> {
@@ -54,7 +58,7 @@ public class EventPublisher {
         Message<OrderFilledEvent> message = MessageBuilder
                 .withPayload(event)
                 .setHeader(KafkaHeaders.TOPIC, "order-filled")
-                .setHeader(KafkaHeaders.MESSAGE_KEY, String.valueOf(event.getClientId()))
+                .setHeader("kafka_messageKey", String.valueOf(event.getClientId()))
                 .build();
 
         kafkaTemplate.send(message).whenComplete((result, ex) -> {
@@ -76,7 +80,7 @@ public class EventPublisher {
                 .withPayload(String.format("{\"orderId\":%d,\"clientId\":%d,\"reason\":\"%s\",\"eventId\":\"%s\"}", 
                         orderId, clientId, reason, eventId))
                 .setHeader(KafkaHeaders.TOPIC, "order-rejected")
-                .setHeader(KafkaHeaders.MESSAGE_KEY, String.valueOf(clientId))
+                .setHeader("kafka_messageKey", String.valueOf(clientId))
                 .build();
 
         kafkaTemplate.send(message).whenComplete((result, ex) -> {
@@ -97,7 +101,7 @@ public class EventPublisher {
                 .withPayload(String.format("{\"clientId\":%d,\"accountId\":%d,\"eventId\":\"%s\"}", 
                         clientId, accountId, eventId))
                 .setHeader(KafkaHeaders.TOPIC, "portfolio-updated")
-                .setHeader(KafkaHeaders.MESSAGE_KEY, String.valueOf(clientId))
+                .setHeader("kafka_messageKey", String.valueOf(clientId))
                 .build();
 
         kafkaTemplate.send(message).whenComplete((result, ex) -> {

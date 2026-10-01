@@ -1,8 +1,8 @@
-import { Component, inject, onInit } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
-import { AuthService } from '../api.service';
+import { AuthService } from './api.service';
 
 @Component({
   selector: 'app-sign-in',
@@ -141,7 +141,7 @@ import { AuthService } from '../api.service';
     }
   `]
 })
-export class SignInComponent implements onInit {
+export class SignInComponent implements OnInit {
   private authService = inject(AuthService);
   private router = inject(Router);
 
@@ -165,11 +165,11 @@ export class SignInComponent implements onInit {
     this.error = '';
 
     this.authService.signIn(this.email).subscribe({
-      next: (response) => {
+      next: (response: any) => {
         this.loading = false;
         this.router.navigate(['/dashboard']);
       },
-      error: (error) => {
+      error: (error: any) => {
         this.error = error.error?.error || 'Sign-in failed. Please try again.';
         this.loading = false;
       },

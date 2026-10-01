@@ -340,7 +340,7 @@ export class QuoteService {
 
   getSupportedInstruments(): Observable<ApiResponse<SupportedInstrument[]>> {
     return this.http.get<ApiResponse<SupportedInstrument[]>>(
-      `${this.apiUrl}/quotes/instruments`,
+      `${this.apiUrl}/instruments`,
       { headers: this.authHeaders() }
     );
   }

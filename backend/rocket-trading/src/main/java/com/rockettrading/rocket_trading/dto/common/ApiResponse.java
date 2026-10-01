@@ -4,4 +4,8 @@ public record ApiResponse<T>(T data, ResponseMeta meta) {
     public static <T> ApiResponse<T> success(T data) {
         return new ApiResponse<>(data, ResponseMeta.now());
     }
+
+    public static <T> ApiResponse<T> error(String errorMessage) {
+        return new ApiResponse<>(null, ResponseMeta.error(errorMessage));
+    }
 }

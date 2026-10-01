@@ -6,7 +6,7 @@ import { OAuthService } from './oauth.service';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule],
   template: `
     <div class="login-container">
       <div class="login-card">

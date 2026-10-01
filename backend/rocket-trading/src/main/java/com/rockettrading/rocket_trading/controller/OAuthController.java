@@ -1,8 +1,10 @@
 package com.rockettrading.rocket_trading.controller;
 
-import com.rockettrading.rocket_trading.model.ClientProfile;
-import com.rockettrading.rocket_trading.repository.ClientProfileRepository;
-import com.rockettrading.rocket_trading.security.JwtTokenProvider;
+import com.rockettrading.rocket_trading.model.Client;
+import com.rockettrading.rocket_trading.model.Session;
+import com.rockettrading.rocket_trading.repository.ClientRepository;
+import com.rockettrading.rocket_trading.repository.SessionRepository;
+import com.rockettrading.rocket_trading.security.JwtService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -11,10 +13,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * OAuth 2.0 Controller
@@ -37,15 +40,18 @@ import java.util.Optional;
 @RequestMapping("/api/v1/auth")
 public class OAuthController {
 
-  private final ClientProfileRepository clientProfileRepository;
-  private final JwtTokenProvider jwtTokenProvider;
+  private final ClientRepository clientRepository;
+  private final SessionRepository sessionRepository;
+  private final JwtService jwtService;
 
   public OAuthController(
-    ClientProfileRepository clientProfileRepository,
-    JwtTokenProvider jwtTokenProvider
+    ClientRepository clientRepository,
+    SessionRepository sessionRepository,
+    JwtService jwtService
   ) {
-    this.clientProfileRepository = clientProfileRepository;
-    this.jwtTokenProvider = jwtTokenProvider;
+    this.clientRepository = clientRepository;
+    this.sessionRepository = sessionRepository;
+    this.jwtService = jwtService;
   }
 
   /**
@@ -60,36 +66,49 @@ public class OAuthController {
     }
 
     try {
-      Integer clientId = (Integer) principal.getAttribute("clientId");
       String email = (String) principal.getAttribute("email");
       String provider = (String) principal.getAttribute("provider");
 
-      if (clientId == null || email == null) {
-        return error("Missing required attributes from OAuth provider");
+      if (email == null) {
+        return error("Missing email from OAuth provider");
       }
 
-      // Load user from database
-      Optional<ClientProfile> user = clientProfileRepository.findById(clientId);
-      if (user.isEmpty()) {
-        return error("User not found: " + clientId);
+      // Load user from database or create new
+      Client client = clientRepository.findByEmail(email);
+      if (client == null) {
+        String name = (String) principal.getAttribute("name");
+        if (name == null) {
+          name = email.split("@")[0];
+        }
+        // Create new client
+        long clientId = generatePositiveId();
+        client = new Client(clientId, name, email);
+        clientRepository.insertProfile(client, null, "Balanced");
+        log.info("Created new user from {} provider: {}", provider, email);
+      } else {
+        log.info("User {} already exists, logging in", email);
       }
 
-      ClientProfile profile = user.get();
+      // Create session for the client
+      long sessionId = generatePositiveId();
+      Instant expiresAt = Instant.now().plus(Duration.ofHours(8));
+      sessionRepository.insert(sessionId, client.getClientId(), expiresAt);
+
+      Session session = new Session(sessionId, expiresAt);
 
       // Generate JWT token
-      String token = jwtTokenProvider.generateToken(clientId, email);
-      long expiresAt = jwtTokenProvider.getExpirationTime();
+      String token = jwtService.generateToken(client, session);
 
       log.info("OAuth success for user {} via provider {}", email, provider);
 
       Map<String, Object> response = new HashMap<>();
       response.put("success", true);
-      response.put("clientId", clientId);
+      response.put("clientId", client.getClientId());
       response.put("email", email);
-      response.put("name", profile.getName());
+      response.put("name", client.getName());
       response.put("accessToken", token);
       response.put("tokenType", "Bearer");
-      response.put("expiresIn", (expiresAt - System.currentTimeMillis()) / 1000);
+      response.put("expiresIn", 28800); // 8 hours in seconds
       response.put("provider", provider);
       response.put("redirectUrl", "http://localhost:4200/auth/callback?token=" + token);
 
@@ -120,56 +139,24 @@ public class OAuthController {
     }
 
     try {
-      Integer clientId = (Integer) principal.getAttribute("clientId");
-      Optional<ClientProfile> user = clientProfileRepository.findById(clientId);
+      String email = (String) principal.getAttribute("email");
+      Client client = clientRepository.findByEmail(email);
 
-      if (user.isEmpty()) {
+      if (client == null) {
         return error("User not found");
       }
 
-      ClientProfile profile = user.get();
       Map<String, Object> response = new HashMap<>();
       response.put("success", true);
-      response.put("clientId", profile.getClientId());
-      response.put("name", profile.getName());
-      response.put("email", profile.getEmail());
-      response.put("riskProfile", profile.getRiskProfile());
+      response.put("clientId", client.getClientId());
+      response.put("name", client.getName());
+      response.put("email", client.getEmail());
 
       return response;
     } catch (Exception ex) {
       log.error("Error retrieving current user", ex);
       return error("Failed to retrieve user information");
     }
-  }
-
-  /**
-   * Sign out / Logout
-   * Invalidates session
-   */
-  @PostMapping("/sign-out")
-  public Map<String, Object> signOut() {
-    // Token invalidation would require a token blacklist in production
-    // For now, frontend just deletes the token from sessionStorage
-    log.info("User signed out");
-    return success("Successfully signed out");
-  }
-
-  /**
-   * Health check endpoint
-   */
-  @GetMapping("/health")
-  public Map<String, Object> health() {
-    return success("OAuth service is healthy");
-  }
-
-  /**
-   * Helper method for success responses
-   */
-  private Map<String, Object> success(String message) {
-    Map<String, Object> response = new HashMap<>();
-    response.put("success", true);
-    response.put("message", message);
-    return response;
   }
 
   /**
@@ -180,5 +167,16 @@ public class OAuthController {
     response.put("success", false);
     response.put("error", message);
     return response;
+  }
+
+  /**
+   * Generate a positive random ID
+   */
+  private long generatePositiveId() {
+    long id;
+    do {
+      id = ThreadLocalRandom.current().nextLong();
+    } while (id <= 0);
+    return id;
   }
 }

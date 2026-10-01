@@ -1,8 +1,8 @@
-import { Component, inject, onInit } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
-import { AuthService, RegisterClientRequest } from '../api.service';
+import { AuthService, RegisterClientRequest } from './api.service';
 
 @Component({
   selector: 'app-register',
@@ -190,7 +190,7 @@ import { AuthService, RegisterClientRequest } from '../api.service';
     }
   `]
 })
-export class RegisterComponent implements onInit {
+export class RegisterComponent implements OnInit {
   private authService = inject(AuthService);
   private router = inject(Router);
 
@@ -221,14 +221,14 @@ export class RegisterComponent implements onInit {
     this.error = '';
 
     this.authService.register(this.form).subscribe({
-      next: (response) => {
+      next: (response: any) => {
         this.success = true;
         this.loading = false;
         setTimeout(() => {
           this.router.navigate(['/sign-in']);
         }, 2000);
       },
-      error: (error) => {
+      error: (error: any) => {
         this.error = error.error?.error || 'Registration failed. Please try again.';
         this.loading = false;
       },
