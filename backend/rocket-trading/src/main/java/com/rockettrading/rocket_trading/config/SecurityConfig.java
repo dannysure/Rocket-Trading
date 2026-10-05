@@ -21,7 +21,8 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity,
                                             JwtAuthenticationFilter jwtAuthenticationFilter,
-                                            RestAuthenticationEntryPoint restAuthenticationEntryPoint) throws Exception {
+                                            RestAuthenticationEntryPoint restAuthenticationEntryPoint,
+                                            OAuth2AuthenticationSuccessHandler oauth2SuccessHandler) throws Exception {
         httpSecurity
                 .csrf(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -32,6 +33,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/sign-in").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/oauth/success").permitAll()
                         .requestMatchers("/api/v1/auth/oauth2/**").permitAll()
                         .requestMatchers("/api/v1/oauth2/authorization/**").permitAll()
                         .requestMatchers("/oauth2/authorization/**").permitAll()
@@ -39,7 +41,7 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2Login(Customizer.withDefaults())
+                .oauth2Login(oauth2 -> oauth2.successHandler(oauth2SuccessHandler))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .cors(Customizer.withDefaults());
 
@@ -49,10 +51,15 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(java.util.List.of("http://localhost:4200", "http://127.0.0.1:4200"));
+        configuration.setAllowedOrigins(java.util.List.of(
+                "http://localhost:4200",
+                "http://127.0.0.1:4200",
+                "http://localhost:49876",
+                "http://127.0.0.1:49876"
+        ));
         configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(java.util.List.of("*"));
-        configuration.setAllowCredentials(false);
+        configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

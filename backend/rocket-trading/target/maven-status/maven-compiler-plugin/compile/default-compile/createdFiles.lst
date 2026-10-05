@@ -11,6 +11,7 @@ com\rockettrading\rocket_trading\dto\auth\SignInRequest.class
 META-INF\spring-configuration-metadata.json
 com\rockettrading\rocket_trading\event\OrderFilledEvent.class
 com\rockettrading\rocket_trading\service\OrderService.class
+com\rockettrading\rocket_trading\dto\auth\UpdateProfileRequest.class
 com\rockettrading\rocket_trading\service\OrderWorker.class
 com\rockettrading\rocket_trading\dto\common\ApiError.class
 com\rockettrading\rocket_trading\repository\model\FillRecord.class
@@ -26,6 +27,7 @@ com\rockettrading\rocket_trading\controller\PortfolioController.class
 com\rockettrading\rocket_trading\repository\MarketQuoteRepository.class
 com\rockettrading\rocket_trading\service\UserService.class
 com\rockettrading\rocket_trading\dto\auth\SessionResponse.class
+com\rockettrading\rocket_trading\config\OAuth2AuthenticationSuccessHandler.class
 com\rockettrading\rocket_trading\model\CashAccount.class
 com\rockettrading\rocket_trading\controller\OrderController.class
 com\rockettrading\rocket_trading\config\KafkaConfig.class
@@ -94,6 +96,7 @@ com\rockettrading\rocket_trading\model\Session.class
 com\rockettrading\rocket_trading\repository\model\MarketQuoteRecord.class
 com\rockettrading\rocket_trading\service\QuoteService.class
 com\rockettrading\rocket_trading\repository\HoldingRepository.class
+com\rockettrading\rocket_trading\dto\auth\OAuthLoginResponse.class
 com\rockettrading\rocket_trading\repository\TransactionRepository.class
 com\rockettrading\rocket_trading\model\AuditEvent.class
 com\rockettrading\rocket_trading\repository\ClientAccountRepository.class

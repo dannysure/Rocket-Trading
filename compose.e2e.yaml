@@ -1,0 +1,55 @@
+version: '3.8'
+
+# E2E Testing Compose Override
+# This file extends docker-compose.yml with e2e-specific configurations
+# Merge with main compose: docker compose -f docker-compose.yml -f compose.e2e.yaml up
+
+services:
+  # Override frontend to use port 4200 for e2e tests
+  ui:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      API_BASE_URL: http://localhost:8081
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:4200:4200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Override API for e2e with proper environment
+  api:
+    environment:
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-test-client-id}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-test-client-secret}
+      OAUTH_REDIRECT_URI: http://localhost:4200/auth/callback
+      APP_FRONTEND_URL: http://localhost:4200
+      SERVER_PORT: 8081
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  # Keep database for e2e
+  db:
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  # Optional: Keep Kafka for e2e if needed
+  kafka:
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+      interval: 5s
+      timeout: 10s
+      retries: 10

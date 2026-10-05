@@ -5,6 +5,7 @@ import { OAuthService } from './oauth.service';
 import { AuthService } from './api.service';
 import { LoginComponent } from './login.component';
 import { CallbackComponent } from './callback.component';
+import { CompleteProfileComponent } from './complete-profile.component';
 import { RegisterComponent } from './register.component';
 import { SignInComponent } from './sign-in.component';
 import { DashboardComponent } from './dashboard.component';
@@ -57,6 +58,7 @@ export const routes: Routes = [
   // OAuth authentication flow
   { path: 'login', component: LoginComponent, canActivate: [noAuthGuard] },
   { path: 'auth/callback', component: CallbackComponent },
+  { path: 'complete-profile', component: CompleteProfileComponent, canActivate: [authGuard] },
 
   // Legacy authentication flow (deprecated, kept for backward compatibility)
   { path: 'register', component: RegisterComponent, canActivate: [noAuthGuard] },

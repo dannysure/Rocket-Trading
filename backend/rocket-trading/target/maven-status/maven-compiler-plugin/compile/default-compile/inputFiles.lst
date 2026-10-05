@@ -2,6 +2,7 @@ C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\config\FauxnanceProperties.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\config\JwtProperties.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\config\KafkaConfig.java
+C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\config\OAuth2AuthenticationSuccessHandler.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\config\OAuthConfig.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\config\SecurityConfig.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\config\WebSocketConfig.java
@@ -15,9 +16,11 @@ C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\controller\UserController.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\controller\WebSocketController.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\dto\auth\ClientRegistrationResponse.java
+C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\dto\auth\OAuthLoginResponse.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\dto\auth\RegisterClientRequest.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\dto\auth\SessionResponse.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\dto\auth\SignInRequest.java
+C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\dto\auth\UpdateProfileRequest.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\dto\common\ApiError.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\dto\common\ApiErrorResponse.java
 C:\Users\Administrator\Downloads\Rocket-Trading\backend\rocket-trading\src\main\java\com\rockettrading\rocket_trading\dto\common\ApiResponse.java

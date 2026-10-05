@@ -58,8 +58,10 @@ public class Client {
     }
 
     public void setClientId(long clientId) {
-        if (clientId <= 0) {
-            throw new IllegalArgumentException("clientId must be positive");
+        // Allow 0 as a placeholder for new clients not yet persisted to database
+        // Once inserted, MyBatis will set the actual generated ID
+        if (clientId < 0) {
+            throw new IllegalArgumentException("clientId must be non-negative");
         }
         this.clientId = clientId;
     }

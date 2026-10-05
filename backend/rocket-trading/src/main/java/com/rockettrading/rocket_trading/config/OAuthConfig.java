@@ -29,7 +29,7 @@ public class OAuthConfig {
   @Value("${oauth.github.client-secret:}")
   private String githubClientSecret;
 
-  @Value("${oauth.redirect-uri:http://localhost:4200/auth/callback}")
+  @Value("${oauth.redirect-uri:http://localhost:8081/login/oauth2/code/github}")
   private String redirectUri;
 
 

@@ -4,9 +4,9 @@ import { Router } from '@angular/router';
 import { Observable, BehaviorSubject } from 'rxjs';
 
 const API_BASE_URL = 'http://localhost:8081/api/v1';
-const OAUTH_REDIRECT_URI = 'http://localhost:4200/auth/callback';
 const SESSION_STORAGE_KEY = 'rocket-trading-session';
 
+// OAuth service for GitHub authentication with dynamic redirects
 export interface OAuthSession {
   clientId: number;
   email: string;
@@ -124,6 +124,13 @@ export class OAuthService {
   getCurrentUser(): Observable<any> {
     const headers = this.getAuthHeaders();
     return this.http.get(`${API_BASE_URL}/auth/me`, { headers });
+  }
+
+  /**
+   * Get user info from current session
+   */
+  getUserInfo(): OAuthSession | null {
+    return this.readSession();
   }
 
   /**

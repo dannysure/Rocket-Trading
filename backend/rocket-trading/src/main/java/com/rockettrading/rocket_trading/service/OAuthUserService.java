@@ -63,10 +63,28 @@ public class OAuthUserService extends DefaultOAuth2UserService {
     String registrationId = userRequest.getClientRegistration().getRegistrationId();
     String email = getEmailFromOAuth2User(oAuth2User, registrationId);
     String name = getNameFromOAuth2User(oAuth2User, registrationId);
+    String login = oAuth2User.getAttribute("login");
 
-    if (email == null) {
-      throw new RuntimeException("Could not extract email from " + registrationId + " provider");
+    // If email is not available (e.g., GitHub user has private email), use login as fallback
+    if (email == null || email.isEmpty()) {
+      if (login != null && !login.isEmpty()) {
+        email = login + "@github.local";
+        log.warn("Email not available from GitHub, using login-based email: {}", email);
+      } else {
+        throw new RuntimeException("Could not extract email or login from " + registrationId + " provider");
+      }
     }
+
+    // Use name from OAuth or fallback to login or email prefix
+    if (name == null || name.isEmpty()) {
+      if (login != null && !login.isEmpty()) {
+        name = login;
+      } else {
+        name = email.split("@")[0];
+      }
+    }
+
+    log.info("Processing OAuth user: email={}, name={}, provider={}", email, name, registrationId);
 
     // Find existing user or create new
     Client client = clientRepository.findByEmail(email);
@@ -74,10 +92,11 @@ public class OAuthUserService extends DefaultOAuth2UserService {
     if (client != null) {
       log.info("User {} already exists, logging in", email);
     } else {
-      long clientId = generatePositiveId();
-      client = new Client(clientId, name != null ? name : email.split("@")[0], email);
+      // Create new client without specifying ID - database will auto-generate it
+      client = new Client(0, name != null ? name : email.split("@")[0], email);
       clientRepository.insertProfile(client, null, "Balanced");
-      log.info("Created new user from {} provider: {}", registrationId, email);
+      // After insert, client.clientId is populated by MyBatis with the generated ID
+      log.info("Created new user from {} provider: {} (clientId={})", registrationId, email, client.getClientId());
     }
 
     // Build OAuth2User with mapped attributes

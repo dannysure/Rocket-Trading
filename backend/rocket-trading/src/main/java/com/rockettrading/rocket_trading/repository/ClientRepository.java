@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDate;
 
@@ -26,10 +27,23 @@ public interface ClientRepository {
     Client findByEmail(String email);
 
     @Insert("""
-            insert into client_profiles (client_id, client_full_name, email_address, date_of_birth, risk_profile)
-            values (#{client.clientId}, #{client.name}, #{client.email}, #{dateOfBirth}, #{riskProfile})
+            insert into client_profiles (client_full_name, email_address, date_of_birth, risk_profile)
+            values (#{client.name}, #{client.email}, #{dateOfBirth}, #{riskProfile})
             """)
+    @org.apache.ibatis.annotations.Options(useGeneratedKeys = true, keyProperty = "client.clientId")
     int insertProfile(@Param("client") Client client,
+                      @Param("dateOfBirth") LocalDate dateOfBirth,
+                      @Param("riskProfile") String riskProfile);
+
+    @Update("""
+            update client_profiles
+            set client_full_name = #{name},
+                date_of_birth = #{dateOfBirth},
+                risk_profile = #{riskProfile}
+            where client_id = #{clientId}
+            """)
+    int updateProfile(@Param("clientId") long clientId,
+                      @Param("name") String name,
                       @Param("dateOfBirth") LocalDate dateOfBirth,
                       @Param("riskProfile") String riskProfile);
 }

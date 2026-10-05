@@ -142,9 +142,10 @@ export class CallbackComponent implements OnInit {
           this.status = 'success';
           this.message = `Welcome, ${response.name}!`;
           
-          // Redirect to dashboard after 1 second
+          // Redirect to profile completion page instead of dashboard
+          // User needs to complete their profile (date of birth, etc.)
           setTimeout(() => {
-            this.router.navigate(['/dashboard']);
+            this.router.navigate(['/complete-profile']);
           }, 1000);
         },
         error: (err) => {

@@ -250,6 +250,19 @@ export class AuthService {
     );
   }
 
+  updateProfile(profileData: { name: string; dateOfBirth: string; riskProfile: string }): Observable<ApiResponse<any>> {
+    return this.http.put<ApiResponse<any>>(
+      `${this.apiUrl}/auth/profile`,
+      profileData,
+      { headers: this.authHeaders() }
+    ).pipe(
+      catchError((error) => {
+        console.error('Profile update failed:', error);
+        return throwError(() => error);
+      })
+    );
+  }
+
   clearSession(): void {
     this.writeSession(null);
   }
