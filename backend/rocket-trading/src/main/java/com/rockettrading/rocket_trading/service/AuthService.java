@@ -4,6 +4,7 @@ import com.rockettrading.rocket_trading.dto.auth.ClientRegistrationResponse;
 import com.rockettrading.rocket_trading.dto.auth.RegisterClientRequest;
 import com.rockettrading.rocket_trading.dto.auth.SessionResponse;
 import com.rockettrading.rocket_trading.dto.auth.SignInRequest;
+import com.rockettrading.rocket_trading.dto.auth.UpdateProfileRequest;
 import com.rockettrading.rocket_trading.exception.ConflictException;
 import com.rockettrading.rocket_trading.exception.UnauthorizedException;
 import com.rockettrading.rocket_trading.model.Client;
@@ -45,6 +46,7 @@ public class AuthService {
             throw new ConflictException("CLIENT_ALREADY_EXISTS", "A client with that email already exists");
         }
 
+        // Create new client with a generated positive ID
         Client client = new Client(generatePositiveId(), request.name(), request.email());
         clientRepository.insertProfile(client, resolveDateOfBirth(request), resolveRiskProfile(request));
 
@@ -77,6 +79,49 @@ public class AuthService {
             return;
         }
         sessionRepository.updateExpiresAt(authenticatedClient.sessionId(), Instant.EPOCH);
+    }
+
+    @Transactional
+    public ClientRegistrationResponse updateProfile(long clientId, UpdateProfileRequest request) {
+        Client client = clientRepository.findById(clientId);
+        if (client == null) {
+            throw new UnauthorizedException("CLIENT_NOT_FOUND", "Client not found");
+        }
+
+        // Update client profile with provided information
+        client.setName(request.name() != null ? request.name() : client.getName());
+        
+        // Update profile in database
+        LocalDate dob = request.dateOfBirth() != null ? request.dateOfBirth() : null;
+        String riskProfile = request.riskProfile() != null ? request.riskProfile() : "Balanced";
+        
+        clientRepository.updateProfile(clientId, client.getName(), dob, riskProfile);
+        
+        return ClientRegistrationResponse.from(client.register(Instant.now()));
+    }
+
+    /**
+     * Get OAuth user info for frontend after successful GitHub OAuth
+     * Returns user details that frontend expects after OAuth redirect
+     */
+    public com.rockettrading.rocket_trading.dto.auth.OAuthLoginResponse getOAuthUserInfo(long clientId) {
+        Client client = clientRepository.findById(clientId);
+        if (client == null) {
+            throw new UnauthorizedException("CLIENT_NOT_FOUND", "Client not found");
+        }
+
+        // Generate a fresh token for the OAuth user
+        Session session = new Session(generatePositiveId(), Instant.now().plusSeconds(28800)); // 8 hours
+        sessionRepository.insert(session.getSessionId(), clientId, session.getExpiresAt());
+        String accessToken = jwtService.generateToken(client, session);
+
+        return com.rockettrading.rocket_trading.dto.auth.OAuthLoginResponse.success(
+                clientId,
+                client.getEmail(),
+                client.getName(),
+                accessToken,
+                28800L // 8 hours in seconds
+        );
     }
 
     private long generatePositiveId() {

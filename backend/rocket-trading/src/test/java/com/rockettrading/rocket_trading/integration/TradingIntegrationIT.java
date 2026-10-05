@@ -213,6 +213,50 @@ class TradingIntegrationIT {
         assertMoney("9899", cash());
     }
 
+    @Test void exposesProfileInstrumentCatalogAndOrderTimeline() throws Exception {
+        long id = accepted("BUY", "1", "timeline");
+        service.executeOrder(id);
+
+        mvc.perform(get("/api/v1/me").header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.clientId").value(clientId))
+                .andExpect(jsonPath("$.data.email").exists());
+
+        mvc.perform(get("/api/v1/instruments").header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(5))
+                .andExpect(jsonPath("$.data[0].symbol").exists());
+
+        mvc.perform(get("/api/v1/orders/" + id + "/timeline").header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderId").value(id))
+                .andExpect(jsonPath("$.data.events.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(5)));
+    }
+
+    @Test void exposesReportingSnapshotsAcrossOrdersAndClientSegments() throws Exception {
+        long buyId = accepted("BUY", "2", "report-buy");
+        service.executeOrder(buyId);
+        long sellId = accepted("SELL", "1", "report-sell");
+        service.executeOrder(sellId);
+
+        mvc.perform(get("/api/v1/reporting/overview").header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalOrders").value(2))
+                .andExpect(jsonPath("$.data.filledOrders").value(2))
+                .andExpect(jsonPath("$.data.totalFills").value(2))
+                .andExpect(jsonPath("$.data.activeClients").value(1));
+
+        mvc.perform(get("/api/v1/reporting/instruments").header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].symbol").value("AAPL"))
+                .andExpect(jsonPath("$.data[0].orderCount").value(2));
+
+        mvc.perform(get("/api/v1/reporting/segments").header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].riskProfile").value("Balanced"))
+                .andExpect(jsonPath("$.data[0].orderCount").value(2));
+    }
+
     private void runTogether(Callable<?> first, Callable<?> second) throws Exception {
         try (var pool = Executors.newFixedThreadPool(2)) {
             var start = new CountDownLatch(1);

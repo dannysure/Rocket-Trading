@@ -6,6 +6,8 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.List;
+
 @Mapper
 public interface InstrumentRepository {
 
@@ -22,4 +24,12 @@ public interface InstrumentRepository {
             """)
     @Options(useGeneratedKeys = true, keyProperty = "instrumentId")
     int insert(FinancialInstrumentRecord instrument);
+
+    @Select("""
+            select instrument_id, ticker_symbol, instrument_name, asset_class, base_currency, is_tradable as tradable
+            from financial_instruments
+            where is_tradable = true
+            order by asset_class, ticker_symbol
+            """)
+    List<FinancialInstrumentRecord> findSupportedInstruments();
 }

@@ -8,9 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 class UserServiceTest {
 
 	@Test
-	@DisplayName("service skeleton can be instantiated")
-	void serviceSkeletonCanBeInstantiated() {
-		assertDoesNotThrow(UserService::new);
+	@DisplayName("service can be instantiated with repositories")
+	void serviceCanBeInstantiatedWithRepositories() {
+		assertDoesNotThrow(() -> new UserService(null, null));
 	}
 }
-

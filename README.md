@@ -18,18 +18,22 @@ docker compose up --build -d
 ```
 
 
-# Running the Frontend
+# Running the Frontend natively
 	cd Frontend
-	add your .env
-	ex: MARKET_DATA_API_KEY=your_api_key_here
 	npm install
 	npm start
 
+The portfolio dashboard talks directly to the Spring API at `http://localhost:8081/api/v1`.
+The optional `Frontend/.env` is only for the homepage quote proxy in [server.ts](C:/Users/Administrator/programming/Rocket-Trading/Frontend/src/server.ts),
+for example `MARKET_DATA_API_KEY=your_api_key_here`.
+
 PowerShell: use `Copy-Item .env.example .env` instead of `cp`.
-Open http://localhost:4200. API: http://localhost:8081. PostgreSQL: localhost:5435.
-Register a fixture client, sign in with its email, then submit a supported order.
-The UI follows accepted orders until they fill or reject and shows the resulting cash,
-holdings and fill prices. The starting catalogue is AAPL, MSFT, GOOGL, BTCUSD and ETHUSD.
+Open http://localhost:4200. API: http://localhost:8081/api/v1. PostgreSQL: localhost:5435.
+The checked-in Angular app lives in [Frontend/](C:/Users/Administrator/programming/Rocket-Trading/Frontend).
+Its [portfolio page](C:/Users/Administrator/programming/Rocket-Trading/Frontend/src/app/portfolio-page.component.ts)
+now registers/signs in a fixture client against Spring, submits orders, polls for status changes,
+shows the persisted cash/positions, and renders the order audit timeline.
+The starting catalogue is AAPL, MSFT, GOOGL, BTCUSD and ETHUSD.
 
 A valid quote-provider key, paths and current timestamped quotes are needed for live orders.
 Without them, registration/sign-in work and attempted orders are recorded as rejected.
@@ -57,9 +61,9 @@ cd backend/rocket-trading
 On Windows use `mvnw.cmd` instead of `./mvnw`.
 
 ```sh
-cd frontend/rocket-trading-ui
+cd Frontend
 npm ci
-npm run test:ci                  # Requires installed Chrome, or CHROME_BIN
+npm test -- --watch=false
 npm run build
 ```
 

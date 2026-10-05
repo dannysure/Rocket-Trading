@@ -8,9 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 class UserControllerTest {
 
     @Test
-    @DisplayName("controller skeleton can be instantiated")
-    void controllerSkeletonCanBeInstantiated() {
-        assertDoesNotThrow(UserController::new);
+    @DisplayName("controller can be instantiated with its service")
+    void controllerCanBeInstantiatedWithItsService() {
+        assertDoesNotThrow(() -> new UserController(new com.rockettrading.rocket_trading.service.UserService(null, null)));
     }
 }
-

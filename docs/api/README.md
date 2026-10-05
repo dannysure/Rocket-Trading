@@ -1,13 +1,25 @@
 # Spring trading API
 
 [openapi.yaml](openapi.yaml) describes the Spring Boot API at `/api/v1`.
-The Angular app calls that same interface through its development/nginx proxy.
+The checked-in Angular app in [Frontend/](C:/Users/Administrator/programming/Rocket-Trading/Frontend)
+calls that same interface directly from `http://localhost:4200` to `http://localhost:8081/api/v1`.
 The contract documents behavior; Spring controllers and validation enforce it.
 
 Public endpoints: `POST /auth/register` and `POST /auth/sign-in`.
 All other endpoints require the returned bearer token and an active server-side session.
 Success uses `{data, meta}`; errors use `{error}`; sign-out returns 204.
 Registration and sign-in remain email-only local fixtures.
+
+## Trading dashboard support
+
+The Angular trading dashboard currently uses:
+
+- `GET /me` for the signed-in fixture client profile
+- `GET /instruments` for the supported trading catalogue
+- `GET /portfolio/summary` for cash and positions
+- `GET /orders`, `GET /fills/{orderId}`, and `GET /orders/{orderId}/timeline`
+  for blotter, fills, and audit reconstruction
+- `GET /reporting/overview` for a lightweight internal reporting snapshot
 
 ## Orders
 
@@ -50,4 +62,5 @@ and database using an HTTP quote fixture. Changes to routes, payloads or validat
 update this contract, Angular interfaces and relevant tests together.
 
 Remaining limits include fixture authentication, large numeric client-ID display precision,
-restricted markets and deferred reporting/operational audit access. See the guide's BRD matrix.
+restricted markets and same-database reporting rather than Kafka-backed projection isolation.
+See the guide's BRD matrix.
