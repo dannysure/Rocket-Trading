@@ -7,8 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from .database import get_db, test_connection
+from .cache import init_redis, close_redis
 from .models import HealthCheckResponse
-from .routes import portfolio, trading, analytics, watchlist
+from .routes import portfolio, trading, analytics, watchlist, cache_management
 
 app = FastAPI(
     title="LEAP Analytics Engine",
@@ -30,6 +31,21 @@ app.include_router(portfolio.router)
 app.include_router(trading.router)
 app.include_router(analytics.router)
 app.include_router(watchlist.router)
+app.include_router(cache_management.router)
+
+# ============================================================================
+# LIFECYCLE EVENTS
+# ============================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize Redis connection on startup"""
+    init_redis()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close Redis connection on shutdown"""
+    close_redis()
 
 # ============================================================================
 # HEALTH CHECK ENDPOINTS

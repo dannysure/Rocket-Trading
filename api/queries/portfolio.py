@@ -18,10 +18,10 @@ def get_portfolio_performance(db: Session, client_id: int) -> PortfolioPerforman
     query = text("""
         SELECT 
             ca.cash_balance,
-            SUM(ch.quantity * mq.mid_price) as total_holdings_value
+            SUM(ah.quantity * ((mq.bid_price + mq.ask_price) / 2)) as total_holdings_value
         FROM client_accounts ca
-        LEFT JOIN client_holdings ch ON ca.account_id = ch.account_id
-        LEFT JOIN market_quotes mq ON ch.instrument_id = mq.instrument_id
+        LEFT JOIN account_holdings ah ON ca.account_id = ah.account_id
+        LEFT JOIN market_quotes mq ON ah.instrument_id = mq.instrument_id
         WHERE ca.client_id = :client_id
         GROUP BY ca.cash_balance
     """)
@@ -36,16 +36,18 @@ def get_portfolio_performance(db: Session, client_id: int) -> PortfolioPerforman
     # Get detailed holdings
     holdings_query = text("""
         SELECT 
-            ch.instrument_id,
+            ah.instrument_id,
             fi.instrument_name,
             fi.asset_class,
-            ch.quantity,
-            mq.mid_price,
-            ch.quantity * mq.mid_price as total_value
-        FROM client_holdings ch
-        JOIN financial_instruments fi ON ch.instrument_id = fi.instrument_id
-        JOIN market_quotes mq ON ch.instrument_id = mq.instrument_id
-        WHERE ch.client_id = :client_id
+            ah.quantity,
+            (mq.bid_price + mq.ask_price) / 2 as mid_price,
+            ah.quantity * ((mq.bid_price + mq.ask_price) / 2) as total_value
+        FROM account_holdings ah
+        JOIN financial_instruments fi ON ah.instrument_id = fi.instrument_id
+        JOIN market_quotes mq ON ah.instrument_id = mq.instrument_id
+        WHERE ah.account_id IN (
+            SELECT account_id FROM client_accounts WHERE client_id = :client_id
+        )
         ORDER BY total_value DESC
         LIMIT 20
     """)
@@ -78,7 +80,7 @@ def get_risk_profile(db: Session, client_id: int) -> RiskProfileResponse:
     """
     # Get risk level
     profile_query = text("""
-        SELECT cp.risk_tolerance
+        SELECT cp.risk_profile
         FROM client_profiles cp
         WHERE cp.client_id = :client_id
     """)
@@ -93,11 +95,12 @@ def get_risk_profile(db: Session, client_id: int) -> RiskProfileResponse:
     allocation_query = text("""
         SELECT 
             fi.asset_class,
-            SUM(ch.quantity * mq.mid_price) as total_value
-        FROM client_holdings ch
-        JOIN financial_instruments fi ON ch.instrument_id = fi.instrument_id
-        JOIN market_quotes mq ON ch.instrument_id = mq.instrument_id
-        WHERE ch.client_id = :client_id
+            SUM(ah.quantity * ((mq.bid_price + mq.ask_price) / 2)) as total_value
+        FROM account_holdings ah
+        JOIN financial_instruments fi ON ah.instrument_id = fi.instrument_id
+        JOIN market_quotes mq ON ah.instrument_id = mq.instrument_id
+        JOIN client_accounts ca ON ah.account_id = ca.account_id
+        WHERE ca.client_id = :client_id
         GROUP BY fi.asset_class
     """)
     allocation_result = db.execute(allocation_query, {"client_id": client_id}).fetchall()
@@ -106,9 +109,9 @@ def get_risk_profile(db: Session, client_id: int) -> RiskProfileResponse:
     
     allocations = {row[0]: Decimal(row[1]) if row[1] else Decimal(0) for row in allocation_result}
     
-    equity_pct = float((allocations.get("EQUITY", 0) / total_value * 100)) if total_value > 0 else 0
-    fx_pct = float((allocations.get("FOREX", 0) / total_value * 100)) if total_value > 0 else 0
-    crypto_pct = float((allocations.get("CRYPTO", 0) / total_value * 100)) if total_value > 0 else 0
+    equity_pct = float((allocations.get("Equity", 0) / total_value * 100)) if total_value > 0 else 0
+    fx_pct = float((allocations.get("FX", 0) / total_value * 100)) if total_value > 0 else 0
+    crypto_pct = float((allocations.get("Crypto", 0) / total_value * 100)) if total_value > 0 else 0
     
     return RiskProfileResponse(
         client_id=client_id,
@@ -126,15 +129,15 @@ def get_top_clients_by_value(db: Session, limit: int = 20) -> List[dict]:
     query = text("""
         SELECT 
             cp.client_id,
-            cp.client_name,
-            ca.cash_balance,
-            SUM(ch.quantity * mq.mid_price) as holdings_value,
-            ca.cash_balance + SUM(ch.quantity * mq.mid_price) as total_value
+            cp.client_full_name,
+            SUM(ca.cash_balance) as cash_balance,
+            SUM(ah.quantity * ((mq.bid_price + mq.ask_price) / 2)) as holdings_value,
+            SUM(ca.cash_balance) + SUM(ah.quantity * ((mq.bid_price + mq.ask_price) / 2)) as total_value
         FROM client_profiles cp
         JOIN client_accounts ca ON cp.client_id = ca.client_id
-        LEFT JOIN client_holdings ch ON ca.account_id = ch.account_id
-        LEFT JOIN market_quotes mq ON ch.instrument_id = mq.instrument_id
-        GROUP BY cp.client_id, cp.client_name, ca.cash_balance
+        LEFT JOIN account_holdings ah ON ca.account_id = ah.account_id
+        LEFT JOIN market_quotes mq ON ah.instrument_id = mq.instrument_id
+        GROUP BY cp.client_id, cp.client_full_name
         ORDER BY total_value DESC
         LIMIT :limit
     """)
@@ -144,7 +147,7 @@ def get_top_clients_by_value(db: Session, limit: int = 20) -> List[dict]:
         {
             "client_id": row[0],
             "client_name": row[1],
-            "cash_balance": float(Decimal(row[2])),
+            "cash_balance": float(Decimal(row[2]) if row[2] else 0),
             "holdings_value": float(Decimal(row[3]) if row[3] else 0),
             "total_value": float(Decimal(row[4]) if row[4] else 0)
         }

@@ -15,6 +15,20 @@ services:
       interval: 2s
       timeout: 5s
       retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
   api:
     build: .
     restart: unless-stopped
@@ -41,3 +55,4 @@ services:
       - "127.0.0.1:4200:80"
 volumes:
   postgres_data:
+  redis_data:

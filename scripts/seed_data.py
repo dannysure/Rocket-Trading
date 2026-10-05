@@ -9,6 +9,10 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 import os
 import random
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 def seed_data():
     """Populate database with realistic sample data"""
@@ -70,11 +74,12 @@ def seed_data():
         
         client_ids = []
         for name, dob, risk in clients:
+            email = name.lower().replace(' ', '.') + '@tradingplatform.com'
             cursor.execute("""
-                INSERT INTO client_profiles (client_full_name, date_of_birth, risk_profile)
-                VALUES (%s, %s, %s)
+                INSERT INTO client_profiles (client_full_name, email_address, date_of_birth, risk_profile)
+                VALUES (%s, %s, %s, %s)
                 RETURNING client_id
-            """, (name, dob, risk))
+            """, (name, email, dob, risk))
             client_ids.append(cursor.fetchone()[0])
         
         conn.commit()

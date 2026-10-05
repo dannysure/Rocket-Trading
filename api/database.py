@@ -3,11 +3,15 @@ Database connection pooling and session management
 Provides SQLAlchemy engine with connection pooling for production
 """
 import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 from urllib.parse import quote_plus
 from typing import Generator
+
+# Load .env file
+load_dotenv()
 
 # Database configuration from environment
 DB_USER = os.getenv("DB_USER", "team_rocket_admin")
