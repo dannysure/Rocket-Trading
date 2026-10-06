@@ -117,7 +117,9 @@ services:
 
   # Python Analytics API (optional)
   analytics-api:
-    build: .
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     restart: unless-stopped
     depends_on:
       db:
@@ -129,8 +131,6 @@ services:
       - "127.0.0.1:8082:8082"
     volumes:
       - ./api:/app/api
-    working_dir: /app
-    command: python -m uvicorn api.main:app --host 0.0.0.0 --port 8082 --reload
 
 volumes:
   postgres_data:

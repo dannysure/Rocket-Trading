@@ -93,7 +93,8 @@ public class OAuthUserService extends DefaultOAuth2UserService {
       log.info("User {} already exists, logging in", email);
     } else {
       // Create new client without specifying ID - database will auto-generate it
-      client = new Client(0, name != null ? name : email.split("@")[0], email);
+      long generatedId = generatePositiveId();
+      client = new Client(generatedId, name != null ? name : email.split("@")[0], email);
       clientRepository.insertProfile(client, null, "Balanced");
       // After insert, client.clientId is populated by MyBatis with the generated ID
       log.info("Created new user from {} provider: {} (clientId={})", registrationId, email, client.getClientId());
