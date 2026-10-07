@@ -80,10 +80,9 @@ public class OAuthController {
         if (name == null) {
           name = email.split("@")[0];
         }
-        // Create new client without specifying ID - database will auto-generate it
-        client = new Client(0, name, email);
+        // client_profiles.client_id has no DB default, so the ID is generated here
+        client = new Client(generatePositiveId(), name, email);
         clientRepository.insertProfile(client, null, "Balanced");
-        // After insert, client.clientId is populated by MyBatis with the generated ID
         log.info("Created new user from {} provider: {} (clientId={})", provider, email, client.getClientId());
       } else {
         log.info("User {} already exists, logging in", email);

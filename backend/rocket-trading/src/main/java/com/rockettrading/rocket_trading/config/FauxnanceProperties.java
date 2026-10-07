@@ -9,6 +9,7 @@ public class FauxnanceProperties {
     private String stockPath;
     private String cryptoPath;
     private long maxAgeSeconds;
+    private boolean allowStale;
 
     public String getBaseUrl() {
         return baseUrl;
@@ -48,5 +49,13 @@ public class FauxnanceProperties {
 
     public void setMaxAgeSeconds(long maxAgeSeconds) {
         this.maxAgeSeconds = maxAgeSeconds;
+    }
+
+    public boolean isAllowStale() {
+        return allowStale;
+    }
+
+    public void setAllowStale(boolean allowStale) {
+        this.allowStale = allowStale;
     }
 }

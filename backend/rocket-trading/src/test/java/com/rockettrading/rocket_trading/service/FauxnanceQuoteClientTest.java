@@ -55,4 +55,17 @@ class FauxnanceQuoteClientTest {
                     () -> client.mapQuoteResponse(payload, "AAPL"));
         }
     }
+
+    @Test
+    void acceptsAndFlagsProviderStaleQuotesWhenAllowed() throws Exception {
+        FauxnanceProperties properties = new FauxnanceProperties();
+        properties.setAllowStale(true);
+        FauxnanceQuoteClient client = new FauxnanceQuoteClient(mock(RestClient.class), properties);
+
+        Quote quote = client.mapQuoteResponse(
+                objectMapper.readTree("{\"price\":100,\"stale\":true,\"timestamp\":\"2026-01-01T00:00:00Z\"}"), "AAPL");
+
+        assertTrue(quote.isProviderStale());
+        assertEquals(Instant.parse("2026-01-01T00:00:00Z"), quote.getCapturedAt());
+    }
 }

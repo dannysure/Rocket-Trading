@@ -1,5 +1,5 @@
-import { Component, inject, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, inject, OnInit, PLATFORM_ID, signal } from '@angular/core';
+import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { OAuthService } from './oauth.service';
 
@@ -11,15 +11,15 @@ import { OAuthService } from './oauth.service';
     <div class="callback-container">
       <div class="callback-card">
         <div class="spinner"></div>
-        <h2>{{ message }}</h2>
-        <p *ngIf="status === 'processing'" class="status-text">
+        <h2>{{ message() }}</h2>
+        <p *ngIf="status() === 'processing'" class="status-text">
           Please wait while we authenticate your account...
         </p>
-        <p *ngIf="status === 'success'" class="status-text success">
+        <p *ngIf="status() === 'success'" class="status-text success">
           Authentication successful! Redirecting to dashboard...
         </p>
-        <div *ngIf="status === 'error'" class="error-content">
-          <p class="status-text error">{{ errorMessage }}</p>
+        <div *ngIf="status() === 'error'" class="error-content">
+          <p class="status-text error">{{ errorMessage() }}</p>
           <button class="retry-button" (click)="retryLogin()">
             Try Again
           </button>
@@ -111,13 +111,18 @@ export class CallbackComponent implements OnInit {
   private oauthService = inject(OAuthService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private platformId = inject(PLATFORM_ID);
 
-  status: 'processing' | 'success' | 'error' = 'processing';
-  message = 'Signing you in...';
-  errorMessage = '';
+  // Signals, not plain fields: the app is zoneless, so plain field writes in async callbacks never re-render
+  status = signal<'processing' | 'success' | 'error'>('processing');
+  message = signal('Signing you in...');
+  errorMessage = signal('');
 
   ngOnInit() {
-    this.processOAuthCallback();
+    // The route is prerendered; only exchange the token in the browser
+    if (isPlatformBrowser(this.platformId)) {
+      this.processOAuthCallback();
+    }
   }
 
   private processOAuthCallback() {
@@ -139,8 +144,8 @@ export class CallbackComponent implements OnInit {
       // Exchange token for session
       this.oauthService.handleOAuthCallback(token).subscribe({
         next: (response) => {
-          this.status = 'success';
-          this.message = `Welcome, ${response.name}!`;
+          this.status.set('success');
+          this.message.set(`Welcome, ${response.name}!`);
           
           // Redirect to profile completion page instead of dashboard
           // User needs to complete their profile (date of birth, etc.)
@@ -157,9 +162,9 @@ export class CallbackComponent implements OnInit {
   }
 
   private handleError(message: string) {
-    this.status = 'error';
-    this.message = 'Authentication Failed';
-    this.errorMessage = message;
+    this.status.set('error');
+    this.message.set('Authentication Failed');
+    this.errorMessage.set(message);
   }
 
   retryLogin() {

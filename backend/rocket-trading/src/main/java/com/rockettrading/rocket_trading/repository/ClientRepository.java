@@ -27,10 +27,9 @@ public interface ClientRepository {
     Client findByEmail(String email);
 
     @Insert("""
-            insert into client_profiles (client_full_name, email_address, date_of_birth, risk_profile)
-            values (#{client.name}, #{client.email}, #{dateOfBirth}, #{riskProfile})
+            insert into client_profiles (client_id, client_full_name, email_address, date_of_birth, risk_profile)
+            values (#{client.clientId}, #{client.name}, #{client.email}, #{dateOfBirth}, #{riskProfile})
             """)
-    @org.apache.ibatis.annotations.Options(useGeneratedKeys = true, keyProperty = "client.clientId")
     int insertProfile(@Param("client") Client client,
                       @Param("dateOfBirth") LocalDate dateOfBirth,
                       @Param("riskProfile") String riskProfile);

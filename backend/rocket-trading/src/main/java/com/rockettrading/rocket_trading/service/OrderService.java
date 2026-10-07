@@ -30,6 +30,7 @@ public class OrderService {
     private final TransactionRepository transactionRepository;
     private final AuditLogRepository auditLogRepository;
     private final QuoteService quoteService;
+    private final QuoteProvider quoteProvider;
     private final Validator validator;
     private final ObjectMapper objectMapper;
 
@@ -50,8 +51,8 @@ public class OrderService {
             }
             return OrderResponse.from(existing);
         }
-        FinancialInstrumentRecord instrument = instrumentRepository.findByTicker(request.symbol());
-        if (instrument == null) throw new NotFoundException("INSTRUMENT_NOT_FOUND", "Instrument is not supported");
+        FinancialInstrumentRecord instrument = findOrRegisterInstrument(request.symbol());
+        if (instrument == null) throw new NotFoundException("INSTRUMENT_NOT_FOUND", "Symbol is not recognized by the quote provider");
 
         OrderRecord order = new OrderRecord();
         order.setClientId(clientId);
@@ -174,6 +175,16 @@ public class OrderService {
         transition(order, "FILLED", null);
     }
 
+    // Any symbol Fauxnance recognizes becomes tradable on first use; validateInstrument still enforces market and currency
+    private FinancialInstrumentRecord findOrRegisterInstrument(String symbol) {
+        FinancialInstrumentRecord instrument = instrumentRepository.findByTicker(symbol);
+        if (instrument != null) return instrument;
+        FinancialInstrumentRecord discovered = quoteProvider.lookupInstrument(symbol);
+        if (discovered == null) return null;
+        instrumentRepository.insertIfAbsent(discovered);
+        return instrumentRepository.findByTicker(discovered.getTickerSymbol());
+    }
+
     private void validateInstrument(OrderRecord order, ClientAccountRecord account, FinancialInstrumentRecord instrument) {
         if (instrument == null || !instrument.isTradable()) throw new IllegalArgumentException("Instrument is not tradable");
         String expectedMarket = "Crypto".equals(instrument.getAssetClass()) ? "crypto" : "stock";
@@ -233,7 +244,8 @@ public class OrderService {
 
     private void recordPricing(OrderRecord order, Quote quote, String stage) {
         audit("orders", order.getOrderId(), order.getClientId(), null,
-                Map.of("stage", stage, "symbol", quote.getSymbol(), "bid", quote.getBid(), "ask", quote.getAsk(), "capturedAt", quote.getCapturedAt()));
+                Map.of("stage", stage, "symbol", quote.getSymbol(), "bid", quote.getBid(), "ask", quote.getAsk(), "capturedAt", quote.getCapturedAt(),
+                        "providerStale", quote.isProviderStale()));
     }
 
     private void audit(String entity, long id, long clientId, Object before, Object after) {

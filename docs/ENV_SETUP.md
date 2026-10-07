@@ -37,7 +37,8 @@ FAUXNANCE_API_KEY=demo-key-change-this              # Mock quote provider API ke
 FAUXNANCE_BASE_URL=https://y4t9nq2bqf.execute-api.eu-west-2.amazonaws.com
 FAUXNANCE_STOCK_PATH=/v1/quotes/{symbol}
 FAUXNANCE_CRYPTO_PATH=/v1/quotes/{symbol}
-FAUXNANCE_MAX_AGE_SECONDS=60
+FAUXNANCE_MAX_AGE_SECONDS=900               # Max quote age for pricing; 15 min = standard delayed data
+FAUXNANCE_ALLOW_STALE=true                  # Accept provider-flagged stale quotes within max age (audited)
 ```
 
 ### Trading Worker Configuration

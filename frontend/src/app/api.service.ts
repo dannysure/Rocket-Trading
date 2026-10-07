@@ -73,12 +73,12 @@ export interface SupportedInstrument {
 }
 
 export interface SubmitOrderRequest {
-  instrumentId: number;
+  symbol: string;
   side: 'BUY' | 'SELL';
   quantity: number;
+  market?: 'stock' | 'crypto';
   orderType: 'MARKET' | 'LIMIT';
   limitPrice?: number;
-  accountId: number;
 }
 
 export interface OrderResponse {
@@ -122,6 +122,8 @@ export interface QuoteResponse {
   price: number;
   market: string;
   capturedAt: string;
+  // The provider's cache missed a refresh; the price is older than usual but within the accepted age
+  delayed: boolean;
 }
 
 export interface ReportingOverviewResponse {
@@ -267,6 +269,11 @@ export class AuthService {
     this.writeSession(null);
   }
 
+  /** Re-read the session after another service (OAuthService) has written it to storage */
+  reloadSession(): void {
+    this.sessionState.set(this.readSession());
+  }
+
   private readSession(): StoredSession | null {
     try {
       const stored = sessionStorage.getItem(this.sessionStorageKey);
@@ -329,25 +336,14 @@ export class QuoteService {
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
   private readonly apiUrl = 'http://localhost:8081/api/v1';
-  private quoteCache = new Map<string, QuoteResponse>();
-
+  // Not cached: prices move, and the backend already rejects stale quotes
   getQuote(symbol: string): Observable<ApiResponse<QuoteResponse>> {
-    if (this.quoteCache.has(symbol)) {
-      return new Observable(observer => {
-        observer.next({ data: this.quoteCache.get(symbol) } as ApiResponse<QuoteResponse>);
-        observer.complete();
-      });
-    }
-
+    const normalized = symbol.trim().toUpperCase();
+    // Fauxnance crypto symbols look like X:BTC-USD
+    const market = normalized.startsWith('X:') ? 'crypto' : 'stock';
     return this.http.get<ApiResponse<QuoteResponse>>(
-      `${this.apiUrl}/quotes/${symbol}`,
-      { headers: this.authHeaders() }
-    ).pipe(
-      tap(response => {
-        if (response.data) {
-          this.quoteCache.set(symbol, response.data);
-        }
-      })
+      `${this.apiUrl}/quotes/${encodeURIComponent(normalized)}`,
+      { headers: this.authHeaders(), params: { market } }
     );
   }
 

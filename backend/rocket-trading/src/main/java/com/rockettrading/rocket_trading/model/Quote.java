@@ -12,6 +12,8 @@ public class Quote {
     private long bidVolume;
     private long askVolume;
     private Instant capturedAt;
+    // Provider said its cached price is past its freshness window; still accepted while within the max quote age
+    private boolean providerStale;
 
     public Quote() {
     }
@@ -142,6 +144,14 @@ public class Quote {
 
     public boolean isStale(Instant asOf, long maxAgeSeconds) {
         return !isCurrent(asOf, maxAgeSeconds);
+    }
+
+    public boolean isProviderStale() {
+        return providerStale;
+    }
+
+    public void setProviderStale(boolean providerStale) {
+        this.providerStale = providerStale;
     }
 }
 

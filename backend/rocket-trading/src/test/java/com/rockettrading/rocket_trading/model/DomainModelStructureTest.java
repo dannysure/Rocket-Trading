@@ -65,7 +65,7 @@ class DomainModelStructureTest {
     @DisplayName("market and portfolio models are available for later slices")
     void marketAndPortfolioModelsAreAvailableForLaterSlices() {
         assertDeclaredFieldNames(Position.class, List.of("symbol", "quantity", "averageCost", "currentPrice", "totalCostBasis"));
-        assertDeclaredFieldNames(Quote.class, List.of("symbol", "bid", "ask", "price", "bidVolume", "askVolume", "capturedAt"));
+        assertDeclaredFieldNames(Quote.class, List.of("symbol", "bid", "ask", "price", "bidVolume", "askVolume", "capturedAt", "providerStale"));
         assertDeclaredFieldNames(Instrument.class, List.of("symbol", "assetClass", "tradable"));
     }
 

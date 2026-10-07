@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -71,16 +71,16 @@ import { AuthService } from './api.service';
             </select>
           </div>
 
-          <div *ngIf="errorMessage" class="alert alert-error">
-            {{ errorMessage }}
+          <div *ngIf="errorMessage()" class="alert alert-error">
+            {{ errorMessage() }}
           </div>
 
           <button
             type="submit"
-            [disabled]="isSubmitting"
+            [disabled]="isSubmitting()"
             class="submit-button"
           >
-            {{ isSubmitting ? 'Saving...' : 'Complete Profile & Continue' }}
+            {{ isSubmitting() ? 'Saving...' : 'Complete Profile & Continue' }}
           </button>
 
           <p class="help-text center">
@@ -237,8 +237,9 @@ export class CompleteProfileComponent implements OnInit {
     riskProfile: 'Balanced'
   };
 
-  isSubmitting = false;
-  errorMessage = '';
+  // Signals so async updates re-render in the zoneless app
+  isSubmitting = signal(false);
+  errorMessage = signal('');
 
   ngOnInit() {
     // Get current user info from OAuth service
@@ -252,12 +253,12 @@ export class CompleteProfileComponent implements OnInit {
   submitProfile() {
     // Validate required fields
     if (!this.profileData.dateOfBirth) {
-      this.errorMessage = 'Date of birth is required';
+      this.errorMessage.set('Date of birth is required');
       return;
     }
 
-    this.isSubmitting = true;
-    this.errorMessage = '';
+    this.isSubmitting.set(true);
+    this.errorMessage.set('');
 
     // Call backend API to update profile
     this.authService.updateProfile({
@@ -266,15 +267,15 @@ export class CompleteProfileComponent implements OnInit {
       riskProfile: this.profileData.riskProfile
     }).subscribe({
       next: (response) => {
-        this.isSubmitting = false;
+        this.isSubmitting.set(false);
         // Redirect to dashboard after successful update
         setTimeout(() => {
           this.router.navigate(['/dashboard']);
         }, 500);
       },
       error: (error) => {
-        this.isSubmitting = false;
-        this.errorMessage = error.error?.message || 'Failed to update profile. Please try again.';
+        this.isSubmitting.set(false);
+        this.errorMessage.set(error.error?.message || 'Failed to update profile. Please try again.');
         console.error('Profile update error:', error);
       }
     });

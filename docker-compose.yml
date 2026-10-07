@@ -52,7 +52,7 @@ services:
       - "127.0.0.1:9092:9092"
       - "127.0.0.1:29092:29092"
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
       interval: 5s
       timeout: 10s
       retries: 10
@@ -87,11 +87,15 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
       JWT_SECRET: ${JWT_SECRET:-change-me-development-jwt-secret-1234567890}
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
+      OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:4200/auth/callback}
       FAUXNANCE_API_KEY: ${FAUXNANCE_API_KEY:-}
       FAUXNANCE_BASE_URL: ${FAUXNANCE_BASE_URL:-https://y4t9nq2bqf.execute-api.eu-west-2.amazonaws.com}
       FAUXNANCE_STOCK_PATH: ${FAUXNANCE_STOCK_PATH:-/v1/quotes/{symbol}}
       FAUXNANCE_CRYPTO_PATH: ${FAUXNANCE_CRYPTO_PATH:-/v1/quotes/{symbol}}
-      FAUXNANCE_MAX_AGE_SECONDS: ${FAUXNANCE_MAX_AGE_SECONDS:-60}
+      FAUXNANCE_MAX_AGE_SECONDS: ${FAUXNANCE_MAX_AGE_SECONDS:-900}
+      FAUXNANCE_ALLOW_STALE: ${FAUXNANCE_ALLOW_STALE:-true}
     ports:
       - "127.0.0.1:8081:8081"
     healthcheck:
