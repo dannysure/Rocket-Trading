@@ -45,11 +45,3 @@ services:
       interval: 2s
       timeout: 5s
       retries: 20
-
-  # Optional: Keep Kafka for e2e if needed
-  kafka:
-    healthcheck:
-      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
-      interval: 5s
-      timeout: 10s
-      retries: 10

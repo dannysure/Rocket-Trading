@@ -41,17 +41,6 @@ public class Session {
         this.expiresAt = expiresAt;
     }
 
-    public void revoke() {
-        revoke(Instant.EPOCH);
-    }
-
-    public void revoke(Instant revokedAt) {
-        if (revokedAt == null) {
-            throw new IllegalArgumentException("revokedAt must not be null");
-        }
-        this.expiresAt = revokedAt;
-    }
-
     public boolean isActive() {
         return isActive(Instant.now());
     }

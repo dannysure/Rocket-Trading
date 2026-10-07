@@ -1,16 +1,21 @@
 package com.rockettrading.rocket_trading.service;
 
 import com.rockettrading.rocket_trading.model.Client;
+import com.rockettrading.rocket_trading.repository.ClientAccountRepository;
 import com.rockettrading.rocket_trading.repository.ClientRepository;
+import com.rockettrading.rocket_trading.repository.model.ClientAccountRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Collections;
@@ -34,9 +39,11 @@ import java.util.concurrent.ThreadLocalRandom;
 public class OAuthUserService extends DefaultOAuth2UserService {
 
   private final ClientRepository clientRepository;
+  private final ClientAccountRepository clientAccountRepository;
 
-  public OAuthUserService(ClientRepository clientRepository) {
+  public OAuthUserService(ClientRepository clientRepository, ClientAccountRepository clientAccountRepository) {
     this.clientRepository = clientRepository;
+    this.clientAccountRepository = clientAccountRepository;
   }
 
   /**
@@ -52,7 +59,12 @@ public class OAuthUserService extends DefaultOAuth2UserService {
       return processOAuthUser(userRequest, oAuth2User);
     } catch (Exception ex) {
       log.error("Failed to process OAuth user", ex);
-      throw new RuntimeException("Failed to authenticate via " + userRequest.getClientRegistration().getClientName(), ex);
+      // Must be an OAuth2AuthenticationException so Spring routes it to the failure handler instead of a 500
+      throw new OAuth2AuthenticationException(
+        new OAuth2Error("user_provisioning_failed"),
+        "Failed to authenticate via " + userRequest.getClientRegistration().getClientName(),
+        ex
+      );
     }
   }
 
@@ -92,12 +104,14 @@ public class OAuthUserService extends DefaultOAuth2UserService {
     if (client != null) {
       log.info("User {} already exists, logging in", email);
     } else {
-      // Create new client without specifying ID - database will auto-generate it
-      client = new Client(0, name != null ? name : email.split("@")[0], email);
+      // client_profiles.client_id has no DB default, so the ID is generated here
+      client = new Client(generatePositiveId(), name, email);
       clientRepository.insertProfile(client, null, "Balanced");
-      // After insert, client.clientId is populated by MyBatis with the generated ID
       log.info("Created new user from {} provider: {} (clientId={})", registrationId, email, client.getClientId());
     }
+
+    // Portfolio and order endpoints require a DIRECT_TRADING account; also backfills OAuth users created before this existed
+    ensureDirectTradingAccount(client.getClientId());
 
     // Build OAuth2User with mapped attributes
     Map<String, Object> attributes = new HashMap<>(oAuth2User.getAttributes());
@@ -115,6 +129,23 @@ public class OAuthUserService extends DefaultOAuth2UserService {
       attributes,
       getAttributeNameKey(registrationId)
     );
+  }
+
+  /**
+   * Create the client's DIRECT_TRADING account if it doesn't exist yet
+   */
+  private void ensureDirectTradingAccount(long clientId) {
+    if (clientAccountRepository.findDirectTradingAccountByClientId(clientId) != null) {
+      return;
+    }
+    ClientAccountRecord account = new ClientAccountRecord();
+    account.setClientId(clientId);
+    account.setAccountType("DIRECT_TRADING");
+    account.setCashBalance(new BigDecimal("10000.00"));
+    account.setCurrency("USD");
+    account.setOpenedDate(LocalDate.now());
+    clientAccountRepository.insert(account);
+    log.info("Created DIRECT_TRADING account for clientId={}", clientId);
   }
 
   /**

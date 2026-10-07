@@ -13,7 +13,8 @@ public record QuoteResponse(
         long bidVolume,
         long askVolume,
         Instant capturedAt,
-        String market
+        String market,
+        boolean delayed
 ) {
     public static QuoteResponse from(Quote quote, String market) {
         return new QuoteResponse(
@@ -24,7 +25,8 @@ public record QuoteResponse(
                 quote.getBidVolume(),
                 quote.getAskVolume(),
                 quote.getCapturedAt(),
-                market
+                market,
+                quote.isProviderStale()
         );
     }
 }

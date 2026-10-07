@@ -23,10 +23,6 @@ public class Client {
         setEmail(email);
     }
 
-    public Registration register() {
-        return register(Instant.now());
-    }
-
     public Registration register(Instant registeredAt) {
         requireRegisteredIdentity();
         requireTimestamp(registeredAt, "registeredAt");

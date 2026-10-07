@@ -66,31 +66,17 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         return;
       }
 
-      // Extract email from OAuth2User attributes (GitHub provider)
-      String email = principal.getAttribute("email");
-      String name = principal.getAttribute("name");
-      if (name == null) {
-        name = principal.getAttribute("login");
-      }
-      
-      if (email == null || email.isEmpty()) {
-        log.error("Could not extract email from OAuth2User");
-        redirectWithError(response, "Could not extract email from OAuth provider");
+      // OAuthUserService has already loaded or created the client and stored its ID
+      Long clientId = principal.getAttribute("clientId");
+      Client client = clientId != null ? clientRepository.findById(clientId) : null;
+      if (client == null) {
+        log.error("No client found for OAuth2 principal (clientId={})", clientId);
+        redirectWithError(response, "Could not load user account");
         return;
       }
 
+      String email = client.getEmail();
       log.info("OAuth2 success for email: {}", email);
-
-      // Get or create user
-      Client client = clientRepository.findByEmail(email);
-      if (client == null) {
-        // Create new client without specifying ID - database will auto-generate it
-        client = new Client(0, name != null ? name : email.split("@")[0], email);
-        clientRepository.insertProfile(client, null, "Balanced");
-        log.info("Created new user from OAuth: {} (clientId={})", email, client.getClientId());
-      } else {
-        log.info("User already exists: {}", email);
-      }
 
       // Create session
       long sessionId = generatePositiveId();

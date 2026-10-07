@@ -19,11 +19,6 @@ JWT_ISSUER=rocket-trading            # JWT issuer identifier
 JWT_EXPIRATION_HOURS=8               # Token expiration time
 ```
 
-### Kafka Configuration
-```env
-KAFKA_BOOTSTRAP_SERVERS=localhost:9092   # Kafka broker addresses
-```
-
 ### API Server Configuration
 ```env
 SERVER_PORT=8081                     # Java backend port
@@ -37,7 +32,8 @@ FAUXNANCE_API_KEY=demo-key-change-this              # Mock quote provider API ke
 FAUXNANCE_BASE_URL=https://y4t9nq2bqf.execute-api.eu-west-2.amazonaws.com
 FAUXNANCE_STOCK_PATH=/v1/quotes/{symbol}
 FAUXNANCE_CRYPTO_PATH=/v1/quotes/{symbol}
-FAUXNANCE_MAX_AGE_SECONDS=60
+FAUXNANCE_MAX_AGE_SECONDS=900               # Max quote age for pricing; 15 min = standard delayed data
+FAUXNANCE_ALLOW_STALE=true                  # Accept provider-flagged stale quotes within max age (audited)
 ```
 
 ### Trading Worker Configuration
@@ -103,8 +99,7 @@ docker compose up -d
 
 # Services automatically inject environment variables
 # - PostgreSQL: DB_NAME, DB_USERNAME, DB_PASSWORD, DB_PORT
-# - Kafka: KAFKA_BOOTSTRAP_SERVERS (read by Java backend)
-# - Java Backend: All SERVER_*, API_*, JWT_*, KAFKA_*, FAUXNANCE_*, TRADING_*
+# - Java Backend: All SERVER_*, API_*, JWT_*, FAUXNANCE_*, TRADING_*
 # - Angular Frontend: API_BASE_URL, FRONTEND_URL, OAUTH_* (via build)
 ```
 
@@ -133,9 +128,6 @@ Before starting services, verify:
 ```bash
 # Check database
 psql -h localhost -p 5432 -U $DB_USERNAME -d $DB_NAME -c "SELECT 1"
-
-# Check Kafka
-kafka-broker-api-versions.sh --bootstrap-server localhost:9092
 
 # Check API server
 curl http://localhost:8081/health

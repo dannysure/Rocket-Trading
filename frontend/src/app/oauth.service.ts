@@ -1,7 +1,8 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, BehaviorSubject } from 'rxjs';
+import { Observable, BehaviorSubject, map } from 'rxjs';
+import { ApiResponse, AuthService } from './api.service';
 
 const API_BASE_URL = 'http://localhost:8081/api/v1';
 const SESSION_STORAGE_KEY = 'rocket-trading-session';
@@ -39,6 +40,7 @@ export interface OAuthProvider {
 export class OAuthService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly authService = inject(AuthService);
 
   private readonly sessionState = signal<OAuthSession | null>(this.readSession());
   readonly session = this.sessionState.asReadonly();
@@ -92,6 +94,8 @@ export class OAuthService {
 
             this.sessionState.set(this.readSession());
             this.isSignedIn.set(true);
+            // AuthService shares the storage key; resync it so AuthInterceptor attaches the new token
+            this.authService.reloadSession();
             observer.next(response);
           } else {
             observer.error(new Error(response.error || 'OAuth exchange failed'));
@@ -111,19 +115,12 @@ export class OAuthService {
       'Authorization': `Bearer ${oauthToken}`
     });
 
-    return this.http.post<OAuthLoginResponse>(
+    // Backend wraps the payload in the standard { data, meta } envelope
+    return this.http.post<ApiResponse<OAuthLoginResponse>>(
       `${API_BASE_URL}/auth/oauth/success`,
       {},
       { headers }
-    );
-  }
-
-  /**
-   * Get current user profile
-   */
-  getCurrentUser(): Observable<any> {
-    const headers = this.getAuthHeaders();
-    return this.http.get(`${API_BASE_URL}/auth/me`, { headers });
+    ).pipe(map(response => response.data ?? { success: false, error: response.error }));
   }
 
   /**
@@ -149,6 +146,7 @@ export class OAuthService {
           this.sessionState.set(null);
           this.isSignedIn.set(false);
           observer.next({ success: true });
+          observer.complete();
         },
         error: (err) => {
           // Clear session even if sign-out fails on server

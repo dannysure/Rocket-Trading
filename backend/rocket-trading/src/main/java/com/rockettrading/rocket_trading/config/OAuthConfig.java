@@ -3,10 +3,7 @@ package com.rockettrading.rocket_trading.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
-import org.springframework.security.oauth2.client.registration.ClientRegistrations;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 
 /**
@@ -31,15 +28,6 @@ public class OAuthConfig {
 
   @Value("${oauth.redirect-uri:http://localhost:8081/login/oauth2/code/github}")
   private String redirectUri;
-
-
-  /**
-   * Password encoder for password-based authentication (if ever re-enabled)
-   */
-  @Bean
-  public PasswordEncoder passwordEncoder() {
-    return new BCryptPasswordEncoder();
-  }
 
   /**
    * OAuth 2.0 Client Registration Repository

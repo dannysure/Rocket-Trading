@@ -78,6 +78,4 @@ production authentication or banking. The PostgreSQL connection and core transac
 are implemented; full BRD compliance also needs secure identity, wider market/currency
 support, isolated reporting, operational audit access and an additional capability.
 
-The older Python `api/`, `database/` scripts and `tests/test_*.py` are a separate prototype.
-They are not started or applied by this Spring application. The authoritative trading schema
-is `backend/rocket-trading/src/main/resources/db/migration/`.
+The authoritative trading schema is `backend/rocket-trading/src/main/resources/db/migration/`.

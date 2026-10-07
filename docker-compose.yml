@@ -16,82 +16,26 @@ services:
       timeout: 5s
       retries: 20
 
-  # Zookeeper for Kafka coordination
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    restart: unless-stopped
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_SYNC_LIMIT: 2
-      ZOOKEEPER_INIT_LIMIT: 5
-    ports:
-      - "127.0.0.1:2181:2181"
-    healthcheck:
-      test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
-      interval: 2s
-      timeout: 5s
-      retries: 20
-
-  # Kafka broker
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    restart: unless-stopped
-    depends_on:
-      zookeeper:
-        condition: service_healthy
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_LOG_RETENTION_HOURS: 24
-    ports:
-      - "127.0.0.1:9092:9092"
-      - "127.0.0.1:29092:29092"
-    healthcheck:
-      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
-      interval: 5s
-      timeout: 10s
-      retries: 10
-    volumes:
-      - kafka_data:/var/lib/kafka/data
-
-  # Kafka UI for monitoring (optional but helpful)
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    restart: unless-stopped
-    depends_on:
-      - kafka
-      - zookeeper
-    environment:
-      KAFKA_CLUSTERS_0_NAME: rocket-trading
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-    ports:
-      - "127.0.0.1:8080:8080"
-
   api:
     build: backend/rocket-trading
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
     environment:
       DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-team_rocket_db}
       DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
       DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
       JWT_SECRET: ${JWT_SECRET:-change-me-development-jwt-secret-1234567890}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
+      OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:4200/auth/callback}
       FAUXNANCE_API_KEY: ${FAUXNANCE_API_KEY:-}
       FAUXNANCE_BASE_URL: ${FAUXNANCE_BASE_URL:-https://y4t9nq2bqf.execute-api.eu-west-2.amazonaws.com}
       FAUXNANCE_STOCK_PATH: ${FAUXNANCE_STOCK_PATH:-/v1/quotes/{symbol}}
       FAUXNANCE_CRYPTO_PATH: ${FAUXNANCE_CRYPTO_PATH:-/v1/quotes/{symbol}}
-      FAUXNANCE_MAX_AGE_SECONDS: ${FAUXNANCE_MAX_AGE_SECONDS:-60}
+      FAUXNANCE_MAX_AGE_SECONDS: ${FAUXNANCE_MAX_AGE_SECONDS:-900}
+      FAUXNANCE_ALLOW_STALE: ${FAUXNANCE_ALLOW_STALE:-true}
     ports:
       - "127.0.0.1:8081:8081"
     healthcheck:
@@ -115,23 +59,5 @@ services:
       timeout: 10s
       retries: 5
 
-  # Python Analytics API (optional)
-  analytics-api:
-    build: .
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://${DB_USERNAME:-team_rocket_admin}:${DB_PASSWORD:-team_rocket_password123}@db:5432/${DB_NAME:-team_rocket_db}
-      API_PORT: 8082
-    ports:
-      - "127.0.0.1:8082:8082"
-    volumes:
-      - ./api:/app/api
-    working_dir: /app
-    command: python -m uvicorn api.main:app --host 0.0.0.0 --port 8082 --reload
-
 volumes:
   postgres_data:
-  kafka_data:

@@ -1,11 +1,11 @@
-import { Component, inject, OnInit, OnDestroy } from '@angular/core';
+import { ChangeDetectorRef, Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { PortfolioService, OrderService, QuoteService, WebSocketService, PortfolioSummaryResponse, OrderResponse, QuoteResponse } from './api.service';
+import { PortfolioService, OrderService, QuoteService, PortfolioSummaryResponse, OrderResponse, QuoteResponse, Position } from './api.service';
 import { AuthService } from './api.service';
 import { OAuthService } from './oauth.service';
-import { Subscription } from 'rxjs';
+import { Subscription, finalize, switchMap, take, takeWhile, timer } from 'rxjs';
 
 @Component({
   selector: 'app-dashboard',
@@ -31,12 +31,8 @@ import { Subscription } from 'rxjs';
               <span class="value">{{ portfolio.currency }} {{ portfolio.cashBalance | number:'1.2-2' }}</span>
             </div>
             <div class="portfolio-stat">
-              <span class="label">Account Type</span>
-              <span class="value">{{ portfolio.accountType }}</span>
-            </div>
-            <div class="portfolio-stat">
-              <span class="label">Total Value</span>
-              <span class="value">{{ portfolio.totalValue | number:'1.2-2' }}</span>
+              <span class="label">Positions</span>
+              <span class="value">{{ portfolio.positions.length }}</span>
             </div>
           </div>
 
@@ -47,16 +43,14 @@ import { Subscription } from 'rxjs';
                 <tr>
                   <th>Symbol</th>
                   <th>Quantity</th>
-                  <th>Avg Cost</th>
-                  <th>Current Value</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 <tr *ngFor="let position of portfolio.positions">
                   <td>{{ position.symbol }}</td>
                   <td>{{ position.quantity | number:'1.6-6' }}</td>
-                  <td>{{ position.averageCost | number:'1.2-2' }}</td>
-                  <td>{{ position.currentValue | number:'1.2-2' }}</td>
+                  <td><button type="button" class="button button-small" (click)="onSellPosition(position)">Sell</button></td>
                 </tr>
               </tbody>
             </table>
@@ -79,7 +73,7 @@ import { Subscription } from 'rxjs';
                   name="symbol"
                   class="input"
                   (blur)="getQuote()"
-                  placeholder="e.g., AAPL"
+                  placeholder="e.g., AAPL, SPY, X:BTC-USD"
                 />
               </div>
 
@@ -105,7 +99,15 @@ import { Subscription } from 'rxjs';
             </div>
 
             <div *ngIf="currentQuote" class="quote-info">
-              <p><strong>{{ orderForm.symbol }}</strong> - Bid: {{ currentQuote.bid }}, Ask: {{ currentQuote.ask }}</p>
+              <p>
+                <strong>{{ orderForm.symbol }}</strong> - Bid: {{ currentQuote.bid }}, Ask: {{ currentQuote.ask }}
+                <span class="quote-time">as of {{ currentQuote.capturedAt | date:'shortTime' }}</span>
+                <span *ngIf="currentQuote.delayed" class="delayed-badge">Delayed price</span>
+              </p>
+              <p>
+                Estimated {{ orderForm.side === 'BUY' ? 'cost' : 'proceeds' }}:
+                {{ (orderForm.side === 'BUY' ? currentQuote.ask : currentQuote.bid) * orderForm.quantity | number:'1.2-2' }}
+              </p>
             </div>
 
             <button type="submit" class="button button-primary" [disabled]="loading.order">
@@ -133,6 +135,7 @@ import { Subscription } from 'rxjs';
                   <th>Side</th>
                   <th>Quantity</th>
                   <th>Status</th>
+                  <th>Reason</th>
                   <th>Submitted</th>
                 </tr>
               </thead>
@@ -143,6 +146,7 @@ import { Subscription } from 'rxjs';
                   <td>{{ order.side }}</td>
                   <td>{{ order.quantity | number:'1.6-6' }}</td>
                   <td><span class="status" [ngClass]="order.status.toLowerCase()">{{ order.status }}</span></td>
+                  <td>{{ order.rejectionReason }}</td>
                   <td>{{ order.submittedAt | date:'short' }}</td>
                 </tr>
               </tbody>
@@ -243,6 +247,22 @@ import { Subscription } from 'rxjs';
       color: #333;
     }
 
+    .quote-time {
+      color: #666;
+      font-size: 0.85rem;
+      margin-left: 0.5rem;
+    }
+
+    .delayed-badge {
+      background: #fff3cd;
+      color: #856404;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-left: 0.5rem;
+      padding: 0.15rem 0.5rem;
+    }
+
     .table {
       width: 100%;
       border-collapse: collapse;
@@ -263,6 +283,7 @@ import { Subscription } from 'rxjs';
     td {
       padding: 0.75rem;
       border-bottom: 1px solid #eee;
+      color: #333;
     }
 
     tr:hover {
@@ -398,8 +419,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private orderService = inject(OrderService);
   private quoteService = inject(QuoteService);
   private authService = inject(AuthService);
-  private webSocketService = inject(WebSocketService);
+  private oauthService = inject(OAuthService);
   private router = inject(Router);
+  // The app is zoneless, so async callbacks must mark the view dirty for state changes to render
+  private cdr = inject(ChangeDetectorRef);
 
   session = this.authService.session();
   portfolio: PortfolioSummaryResponse | null = null;
@@ -422,6 +445,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   };
 
   private subscriptions: Subscription[] = [];
+  // Reused only when retrying the same order after an uncertain failure, so a retry can't create a duplicate trade
+  private pendingOrder: { payload: string; key: string } | null = null;
 
   ngOnInit(): void {
     if (!this.authService.isSignedIn()) {
@@ -431,11 +456,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     this.loadPortfolio();
     this.loadOrders();
-    this.connectWebSocket();
   }
 
   ngOnDestroy(): void {
-    this.webSocketService.disconnect();
     this.subscriptions.forEach(sub => sub.unsubscribe());
   }
 
@@ -446,10 +469,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
         next: (response) => {
           this.portfolio = response.data!;
           this.loading.portfolio = false;
+          this.cdr.markForCheck();
         },
         error: (error) => {
           console.error('Failed to load portfolio:', error);
           this.loading.portfolio = false;
+          this.cdr.markForCheck();
         },
       })
     );
@@ -462,35 +487,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
         next: (response) => {
           this.orders = response.data || [];
           this.loading.orders = false;
+          this.cdr.markForCheck();
         },
         error: (error) => {
           console.error('Failed to load orders:', error);
           this.loading.orders = false;
-        },
-      })
-    );
-  }
-
-  private connectWebSocket(): void {
-    this.subscriptions.push(
-      this.webSocketService.connect().subscribe({
-        next: () => {
-          console.log('WebSocket connected');
-        },
-        error: (error) => {
-          console.warn('WebSocket connection failed:', error);
-        },
-      })
-    );
-
-    this.subscriptions.push(
-      this.webSocketService.messages$.subscribe({
-        next: (message) => {
-          if (message) {
-            console.log('WebSocket message:', message);
-            this.loadPortfolio();
-            this.loadOrders();
-          }
+          this.cdr.markForCheck();
         },
       })
     );
@@ -503,17 +505,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.quoteService.getQuote(this.orderForm.symbol).subscribe({
         next: (response) => {
           this.currentQuote = response.data || null;
+          this.cdr.markForCheck();
         },
         error: (error) => {
           console.error('Failed to get quote:', error);
           this.currentQuote = null;
+          this.cdr.markForCheck();
         },
       })
     );
   }
 
   onPlaceOrder(): void {
-    if (!this.portfolio || !this.orderForm.symbol || this.orderForm.quantity <= 0) {
+    if (!this.portfolio) {
+      this.orderError = 'Your trading account could not be loaded. Please refresh or sign in again.';
+      return;
+    }
+    if (!this.orderForm.symbol || this.orderForm.quantity <= 0) {
       this.orderError = 'Please fill in all fields';
       return;
     }
@@ -522,65 +530,89 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.orderError = '';
     this.orderSuccess = false;
 
+    const symbol = this.orderForm.symbol.trim().toUpperCase();
     const request = {
-      instrumentId: 1, // This should be looked up from the symbol
+      symbol,
       side: this.orderForm.side as 'BUY' | 'SELL',
       quantity: this.orderForm.quantity,
+      // Fauxnance crypto symbols look like X:BTC-USD
+      market: symbol.startsWith('X:') ? 'crypto' as const : 'stock' as const,
       orderType: 'MARKET' as const,
-      accountId: this.portfolio.accountId,
     };
 
+    const payload = JSON.stringify(request);
+    if (this.pendingOrder?.payload !== payload) {
+      this.pendingOrder = { payload, key: crypto.randomUUID() };
+    }
+
     this.subscriptions.push(
-      this.orderService.submitOrder(request).subscribe({
+      this.orderService.submitOrder(request, this.pendingOrder.key).subscribe({
         next: (response) => {
+          this.pendingOrder = null;
           this.loading.order = false;
           this.orderSuccess = true;
           this.orderForm = { symbol: '', side: 'BUY', quantity: 1 };
           this.currentQuote = null;
+          this.cdr.markForCheck();
+          this.loadOrders();
+          if (response.data) {
+            this.pollUntilSettled(response.data.orderId);
+          }
           setTimeout(() => {
             this.orderSuccess = false;
-            this.loadPortfolio();
-            this.loadOrders();
+            this.cdr.markForCheck();
           }, 2000);
         },
         error: (error) => {
+          // Network errors and 5xx may have created the order server-side; keep the key so a retry is deduplicated
+          if (error.status !== 0 && error.status < 500) {
+            this.pendingOrder = null;
+          }
           this.loading.order = false;
-          this.orderError = error.error?.error || 'Failed to place order';
+          this.orderError = error.error?.error?.message || 'Failed to place order';
+          this.cdr.markForCheck();
+          // Rejected orders are still recorded, so show them in Recent Orders
+          this.loadOrders();
         },
       })
     );
   }
 
-  onSignOut(): void {
-    const oauthService = inject(OAuthService);
-    const authService = inject(AuthService);
-    const router = inject(Router);
+  onSellPosition(position: Position): void {
+    this.orderForm = { symbol: position.symbol, side: 'SELL', quantity: position.quantity };
+    this.orderError = '';
+    this.getQuote();
+    document.getElementById('symbol')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 
-    // Try OAuth sign-out first
-    if (oauthService.isAuthenticated()) {
-      oauthService.signOut().subscribe({
-        next: () => {
-          router.navigate(['/login']);
+  // Orders are accepted first and filled by a background worker, so poll until the order settles
+  private pollUntilSettled(orderId: number): void {
+    this.subscriptions.push(
+      timer(0, 2000).pipe(
+        switchMap(() => this.orderService.getOrder(orderId)),
+        takeWhile(response => response.data?.status === 'SUBMITTED' || response.data?.status === 'ACCEPTED', true),
+        take(30),
+      ).subscribe({
+        complete: () => {
+          this.loadPortfolio();
+          this.loadOrders();
         },
-        error: () => {
-          // Clear session even if sign-out fails
-          router.navigate(['/login']);
-        }
-      });
-    } else if (authService.isSignedIn()) {
-      // Fallback to legacy auth sign-out
-      authService.signOut().subscribe({
-        next: () => {
-          router.navigate(['/login']);
-        },
-        error: (error) => {
-          console.error('Sign out error:', error);
-          authService.clearSession();
-          router.navigate(['/login']);
-        },
-      });
-    } else {
-      router.navigate(['/login']);
-    }
+        error: (error) => console.error('Failed to poll order status:', error),
+      })
+    );
+  }
+
+  onSignOut(): void {
+    // Both services keep their own in-memory copy of the shared stored session, so clear both
+    const signOut$ = this.oauthService.isAuthenticated()
+      ? this.oauthService.signOut()
+      : this.authService.signOut();
+
+    signOut$.pipe(finalize(() => {
+      this.authService.clearSession();
+      this.router.navigate(['/login']);
+    })).subscribe({
+      error: (error) => console.error('Sign out error:', error),
+    });
   }
 }
