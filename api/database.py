@@ -18,7 +18,7 @@ DB_NAME = os.getenv("DB_NAME", "team_rocket_db")
 
 # URL encode password to handle special characters
 encoded_password = quote_plus(DB_PASSWORD)
-DATABASE_URL = f"postgresql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Create engine with connection pooling (production-grade)
 engine = create_engine(

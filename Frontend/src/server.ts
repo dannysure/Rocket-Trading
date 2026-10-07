@@ -11,10 +11,15 @@ import { join } from 'node:path';
 const browserDistFolder = join(import.meta.dirname, '../browser');
 const quoteApiBaseUrl =
   'https://y4t9nq2bqf.execute-api.eu-west-2.amazonaws.com/v1/quotes';
+const analyticsApiBaseUrl =
+  process.env['ROCKET_TRADING_ANALYTICS_API_BASE_URL'] ??
+  process.env['ANALYTICS_API_BASE_URL'] ??
+  'http://127.0.0.1:8000';
 const envPath = join(process.cwd(), '.env');
 
 const app = express();
 const angularApp = new AngularNodeAppEngine();
+app.use(express.json());
 
 function readEnvValue(name: string): string | undefined {
   if (!existsSync(envPath)) {
@@ -69,6 +74,38 @@ app.get('/api/quotes/:symbol', async (req, res, next) => {
     next(error);
   }
 });
+
+async function proxyAnalyticsRequest(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  try {
+    const baseUrl = analyticsApiBaseUrl.endsWith('/')
+      ? analyticsApiBaseUrl
+      : `${analyticsApiBaseUrl}/`;
+    const upstreamUrl = new URL(req.originalUrl.replace(/^\/+/, ''), baseUrl);
+    const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
+
+    const upstreamResponse = await fetch(upstreamUrl, {
+      method: req.method,
+      headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
+      body: hasBody ? JSON.stringify(req.body) : undefined,
+    });
+
+    const body = await upstreamResponse.text();
+    res
+      .status(upstreamResponse.status)
+      .type(upstreamResponse.headers.get('content-type') ?? 'application/json')
+      .send(body);
+  } catch (error) {
+    next(error);
+  }
+}
+
+app.get('/api/perpetual-futures/accounts', proxyAnalyticsRequest);
+app.get('/api/perpetual-futures/markets/:marketSymbol', proxyAnalyticsRequest);
+app.post('/api/perpetual-futures/orders', proxyAnalyticsRequest);
 
 /**
  * Example Express Rest API endpoints can be defined here.

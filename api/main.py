@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 from .database import get_db, test_connection
 from .models import HealthCheckResponse
-from .routes import portfolio, trading, analytics, watchlist
+from .routes import portfolio, trading, analytics, watchlist, perpetual_futures
 
 app = FastAPI(
     title="LEAP Analytics Engine",
@@ -30,6 +30,7 @@ app.include_router(portfolio.router)
 app.include_router(trading.router)
 app.include_router(analytics.router)
 app.include_router(watchlist.router)
+app.include_router(perpetual_futures.router)
 
 # ============================================================================
 # HEALTH CHECK ENDPOINTS

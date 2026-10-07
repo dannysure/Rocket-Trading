@@ -216,3 +216,139 @@ class HealthCheckResponse(BaseModel):
     status: str  # active, degraded, offline
     database: str  # connected, disconnected
     timestamp: datetime
+
+
+class DirectTradingAccountResponse(BaseModel):
+    """Direct-trading account available for perpetual futures."""
+    account_id: int
+    client_id: int
+    client_name: str
+    account_type: str
+    currency: str
+    cash_balance: Decimal
+
+    class Config:
+        json_encoders = {Decimal: float}
+
+
+class PerpetualPositionResponse(BaseModel):
+    """Current perpetual position for one account and market."""
+    market_symbol: str
+    side: str
+    signed_quantity: Decimal
+    entry_price: Decimal
+    mark_price: Decimal
+    notional_usd: Decimal
+    leverage: int
+    liquidation_price: Decimal
+    unrealized_pnl_usd: Decimal
+    realized_pnl_usd: Decimal
+    cumulative_funding_usd: Decimal
+    initial_margin_usd: Decimal
+    maintenance_margin_usd: Decimal
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        json_encoders = {Decimal: float}
+
+
+class PerpetualOrderFillResponse(BaseModel):
+    """Execution detail for a perpetual order."""
+    fill_id: int
+    order_id: int
+    quantity: Decimal
+    price: Decimal
+    fee_usd: Decimal
+    realized_pnl_usd: Decimal
+    created_at: datetime
+
+    class Config:
+        json_encoders = {Decimal: float}
+
+
+class PerpetualOrderResponse(BaseModel):
+    """Perpetual order and fill summary."""
+    order_id: int
+    market_symbol: str
+    side: str
+    order_type: str
+    reduce_only: bool
+    quantity: Decimal
+    leverage: int
+    limit_price: Optional[Decimal] = None
+    status: str
+    mark_price: Decimal
+    average_fill_price: Optional[Decimal] = None
+    notional_usd: Decimal
+    fee_usd: Decimal
+    rejection_reason: Optional[str] = None
+    created_at: datetime
+    filled_at: Optional[datetime] = None
+    fill: Optional[PerpetualOrderFillResponse] = None
+
+    class Config:
+        json_encoders = {Decimal: float}
+
+
+class PerpetualMarketOverviewResponse(BaseModel):
+    """Full Ethereum perpetual market view for the trading page."""
+    market_symbol: str
+    display_name: str
+    asset_symbol: str
+    quote_currency: str
+    settlement_asset: str
+    spot_symbol: str
+    trading_view_symbol: str
+    index_price: Decimal
+    mark_price: Decimal
+    best_bid: Decimal
+    best_ask: Decimal
+    basis_bps: Decimal
+    premium_index: Decimal
+    funding_rate: Decimal
+    annualized_funding_rate: Decimal
+    funding_direction: str
+    next_funding_at: datetime
+    open_interest_usd: Decimal
+    long_open_interest_usd: Decimal
+    short_open_interest_usd: Decimal
+    long_short_ratio: float
+    volume_24h_usd: Decimal
+    insurance_fund_usd: Decimal
+    spot_change_24h_pct: float
+    quote_timestamp: datetime
+    account_id: int
+    client_id: int
+    available_collateral_usd: Decimal
+    account_equity_usd: Decimal
+    maintenance_margin_rate: Decimal
+    max_leverage: int
+    maker_fee_rate: Decimal
+    taker_fee_rate: Decimal
+    position: Optional[PerpetualPositionResponse] = None
+    recent_orders: List[PerpetualOrderResponse]
+
+    class Config:
+        json_encoders = {Decimal: float}
+
+
+class SubmitPerpetualOrderRequest(BaseModel):
+    """Submit a perpetual futures order for immediate execution/rejection."""
+    client_id: int
+    account_id: int
+    market_symbol: str
+    side: str
+    order_type: str
+    quantity: Decimal
+    leverage: int
+    limit_price: Optional[Decimal] = None
+    reduce_only: bool = False
+
+
+class PerpetualOrderSubmissionResponse(BaseModel):
+    """Order result plus refreshed market state."""
+    order: PerpetualOrderResponse
+    market: PerpetualMarketOverviewResponse
+
+    class Config:
+        json_encoders = {Decimal: float}
