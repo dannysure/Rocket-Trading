@@ -7,8 +7,4 @@ public record ResponseMeta(String requestId, Instant timestamp, String errorMess
     public static ResponseMeta now() {
         return new ResponseMeta(UUID.randomUUID().toString(), Instant.now(), null);
     }
-
-    public static ResponseMeta error(String errorMessage) {
-        return new ResponseMeta(UUID.randomUUID().toString(), Instant.now(), errorMessage);
-    }
 }

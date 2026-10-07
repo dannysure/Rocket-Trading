@@ -19,11 +19,6 @@ JWT_ISSUER=rocket-trading            # JWT issuer identifier
 JWT_EXPIRATION_HOURS=8               # Token expiration time
 ```
 
-### Kafka Configuration
-```env
-KAFKA_BOOTSTRAP_SERVERS=localhost:9092   # Kafka broker addresses
-```
-
 ### API Server Configuration
 ```env
 SERVER_PORT=8081                     # Java backend port
@@ -104,8 +99,7 @@ docker compose up -d
 
 # Services automatically inject environment variables
 # - PostgreSQL: DB_NAME, DB_USERNAME, DB_PASSWORD, DB_PORT
-# - Kafka: KAFKA_BOOTSTRAP_SERVERS (read by Java backend)
-# - Java Backend: All SERVER_*, API_*, JWT_*, KAFKA_*, FAUXNANCE_*, TRADING_*
+# - Java Backend: All SERVER_*, API_*, JWT_*, FAUXNANCE_*, TRADING_*
 # - Angular Frontend: API_BASE_URL, FRONTEND_URL, OAUTH_* (via build)
 ```
 
@@ -134,9 +128,6 @@ Before starting services, verify:
 ```bash
 # Check database
 psql -h localhost -p 5432 -U $DB_USERNAME -d $DB_NAME -c "SELECT 1"
-
-# Check Kafka
-kafka-broker-api-versions.sh --bootstrap-server localhost:9092
 
 # Check API server
 curl http://localhost:8081/health

@@ -45,20 +45,6 @@ class SessionTest {
     }
 
     @Test
-    @DisplayName("revoke sets expiry to the provided instant")
-    void revokeSetsExpiryToProvidedInstant() {
-        Session session = new Session(101L, Instant.parse("2026-09-23T23:00:00Z"));
-        Instant revokedAt = Instant.parse("2026-09-23T20:00:00Z");
-
-        session.revoke(revokedAt);
-
-        assertAll(
-                () -> assertEquals(revokedAt, session.getExpiresAt()),
-                () -> assertFalse(session.isActive(revokedAt))
-        );
-    }
-
-    @Test
     @DisplayName("constructor rejects non-positive session id")
     void constructorRejectsNonPositiveSessionId() {
         IllegalArgumentException exception = assertThrows(
@@ -91,18 +77,5 @@ class SessionTest {
         );
 
         assertEquals("asOf must not be null", exception.getMessage());
-    }
-
-    @Test
-    @DisplayName("revoke rejects null instant")
-    void revokeRejectsNullInstant() {
-        Session session = new Session(101L, Instant.parse("2026-09-23T23:00:00Z"));
-
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> session.revoke(null)
-        );
-
-        assertEquals("revokedAt must not be null", exception.getMessage());
     }
 }

@@ -56,7 +56,7 @@ class RestartRecoveryIT {
             assertEquals(2, db.queryForObject("SELECT count(*) FROM orders", Integer.class));
             assertEquals(2, db.queryForObject("SELECT count(*) FROM fills", Integer.class));
             assertEquals(new BigDecimal("9798.0000"), db.queryForObject("SELECT cash_balance FROM client_accounts", BigDecimal.class));
-            assertEquals(3, db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class));
+            assertEquals(5, db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class));
         }
     }
 

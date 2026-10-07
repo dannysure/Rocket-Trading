@@ -2,7 +2,7 @@ import { ChangeDetectorRef, Component, inject, OnInit, OnDestroy } from '@angula
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { PortfolioService, OrderService, QuoteService, WebSocketService, PortfolioSummaryResponse, OrderResponse, QuoteResponse, Position } from './api.service';
+import { PortfolioService, OrderService, QuoteService, PortfolioSummaryResponse, OrderResponse, QuoteResponse, Position } from './api.service';
 import { AuthService } from './api.service';
 import { OAuthService } from './oauth.service';
 import { Subscription, finalize, switchMap, take, takeWhile, timer } from 'rxjs';
@@ -420,7 +420,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private quoteService = inject(QuoteService);
   private authService = inject(AuthService);
   private oauthService = inject(OAuthService);
-  private webSocketService = inject(WebSocketService);
   private router = inject(Router);
   // The app is zoneless, so async callbacks must mark the view dirty for state changes to render
   private cdr = inject(ChangeDetectorRef);
@@ -457,11 +456,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     this.loadPortfolio();
     this.loadOrders();
-    this.connectWebSocket();
   }
 
   ngOnDestroy(): void {
-    this.webSocketService.disconnect();
     this.subscriptions.forEach(sub => sub.unsubscribe());
   }
 
@@ -496,31 +493,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
           console.error('Failed to load orders:', error);
           this.loading.orders = false;
           this.cdr.markForCheck();
-        },
-      })
-    );
-  }
-
-  private connectWebSocket(): void {
-    this.subscriptions.push(
-      this.webSocketService.connect().subscribe({
-        next: () => {
-          console.log('WebSocket connected');
-        },
-        error: (error) => {
-          console.warn('WebSocket connection failed:', error);
-        },
-      })
-    );
-
-    this.subscriptions.push(
-      this.webSocketService.messages$.subscribe({
-        next: (message) => {
-          if (message) {
-            console.log('WebSocket message:', message);
-            this.loadPortfolio();
-            this.loadOrders();
-          }
         },
       })
     );
@@ -638,7 +610,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     signOut$.pipe(finalize(() => {
       this.authService.clearSession();
-      this.webSocketService.disconnect();
       this.router.navigate(['/login']);
     })).subscribe({
       error: (error) => console.error('Sign out error:', error),

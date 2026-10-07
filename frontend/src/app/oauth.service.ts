@@ -124,14 +124,6 @@ export class OAuthService {
   }
 
   /**
-   * Get current user profile
-   */
-  getCurrentUser(): Observable<any> {
-    const headers = this.getAuthHeaders();
-    return this.http.get(`${API_BASE_URL}/auth/me`, { headers });
-  }
-
-  /**
    * Get user info from current session
    */
   getUserInfo(): OAuthSession | null {

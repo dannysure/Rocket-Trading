@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
 import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent } from '@angular/common/http';
-import { Observable, throwError, BehaviorSubject } from 'rxjs';
+import { Observable, throwError } from 'rxjs';
 import { catchError, retry, tap } from 'rxjs/operators';
 
 // ============================================================================
@@ -124,18 +124,6 @@ export interface QuoteResponse {
   capturedAt: string;
   // The provider's cache missed a refresh; the price is older than usual but within the accepted age
   delayed: boolean;
-}
-
-export interface ReportingOverviewResponse {
-  from: string;
-  to: string;
-  totalOrders: number;
-  acceptedOrders: number;
-  filledOrders: number;
-  rejectedOrders: number;
-  totalFills: number;
-  totalNotional: number;
-  activeClients: number;
 }
 
 type StoredSession = {
@@ -420,124 +408,5 @@ export class OrderService {
       'Authorization': `Bearer ${session?.token || ''}`,
       'Content-Type': 'application/json',
     });
-  }
-}
-
-// ============================================================================
-// REPORTING SERVICE
-// ============================================================================
-
-@Injectable({ providedIn: 'root' })
-export class ReportingService {
-  private readonly http = inject(HttpClient);
-  private readonly authService = inject(AuthService);
-  private readonly apiUrl = 'http://localhost:8081/api/v1';
-
-  getReportingOverview(from: string, to: string): Observable<ApiResponse<ReportingOverviewResponse>> {
-    return this.http.get<ApiResponse<ReportingOverviewResponse>>(
-      `${this.apiUrl}/reporting/overview?from=${from}&to=${to}`,
-      { headers: this.authHeaders() }
-    );
-  }
-
-  getOrderMetrics(): Observable<ApiResponse<any>> {
-    return this.http.get<ApiResponse<any>>(
-      `${this.apiUrl}/reporting/orders`,
-      { headers: this.authHeaders() }
-    );
-  }
-
-  getClientMetrics(): Observable<ApiResponse<any>> {
-    return this.http.get<ApiResponse<any>>(
-      `${this.apiUrl}/reporting/clients`,
-      { headers: this.authHeaders() }
-    );
-  }
-
-  private authHeaders(): HttpHeaders {
-    const session = this.authService.session();
-    return new HttpHeaders({
-      'Authorization': `Bearer ${session?.token || ''}`,
-      'Content-Type': 'application/json',
-    });
-  }
-}
-
-// ============================================================================
-// WEBSOCKET SERVICE (Real-time Updates)
-// ============================================================================
-
-@Injectable({ providedIn: 'root' })
-export class WebSocketService {
-  private authService = inject(AuthService);
-  private wsUrl = 'ws://localhost:8081/ws';
-  private socket: WebSocket | null = null;
-  private messageSubject = new BehaviorSubject<any>(null);
-  private connectionSubject = new BehaviorSubject<boolean>(false);
-
-  public messages$ = this.messageSubject.asObservable();
-  public connected$ = this.connectionSubject.asObservable();
-
-  connect(): Observable<void> {
-    return new Observable(observer => {
-      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-        observer.next();
-        observer.complete();
-        return;
-      }
-
-      this.socket = new WebSocket(this.wsUrl);
-
-      this.socket.onopen = () => {
-        this.connectionSubject.next(true);
-        const clientId = this.authService.clientId();
-        if (clientId) {
-          this.subscribe(clientId);
-        }
-        observer.next();
-        observer.complete();
-      };
-
-      this.socket.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          this.messageSubject.next(message);
-        } catch (e) {
-          console.error('Failed to parse WebSocket message:', e);
-        }
-      };
-
-      this.socket.onerror = (error) => {
-        this.connectionSubject.next(false);
-        observer.error(error);
-      };
-
-      this.socket.onclose = () => {
-        this.connectionSubject.next(false);
-      };
-    });
-  }
-
-  disconnect(): void {
-    if (this.socket) {
-      this.socket.close();
-      this.socket = null;
-      this.connectionSubject.next(false);
-    }
-  }
-
-  subscribe(clientId: number): void {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.send({
-        type: 'SUBSCRIBE',
-        clientId: clientId,
-      });
-    }
-  }
-
-  private send(message: any): void {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify(message));
-    }
   }
 }

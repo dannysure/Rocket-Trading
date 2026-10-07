@@ -20,14 +20,6 @@ public interface HoldingRepository {
             """)
     HoldingRecord findAccountHolding(@Param("accountId") long accountId, @Param("instrumentId") long instrumentId);
 
-    @Select("""
-            select client_holding_id as holding_id, client_id, instrument_id, total_quantity as quantity, as_of_timestamp
-            from client_holdings
-            where client_id = #{clientId}
-              and instrument_id = #{instrumentId}
-            """)
-    HoldingRecord findClientHolding(@Param("clientId") long clientId, @Param("instrumentId") long instrumentId);
-
     @Insert("""
             insert into account_holdings (account_id, instrument_id, quantity, as_of_timestamp)
             values (#{accountId}, #{instrumentId}, #{quantity}, current_timestamp)

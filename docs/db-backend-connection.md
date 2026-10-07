@@ -180,7 +180,7 @@ someone reviews it. Automatic baselining is disabled. Before adopting that datab
 1. Stop the old application/writers and take a backup. Restore the backup into a separate
    PostgreSQL instance and work on that copy first. Keep the original volume intact.
 2. Compare its schema to `V1__trading_schema.sql`. The older `database/schema.sql` prototype
-   differs from the Java schema and must not be blindly baselined. Inspect existing
+   (since removed from the repository; see git history) differs from the Java schema and must not be blindly baselined. Inspect existing
    duplicate client emails, direct-trading accounts and multiple fills per order; V2 adds
    constraints that deliberately fail on incompatible data instead of deleting it.
 3. Inspect triggers. V2 refuses to proceed if `trigger_fill_execution` exists. A reviewed
@@ -199,8 +199,8 @@ Old timestamp-without-time-zone values are interpreted as UTC by V2; verify that
 against any historical data before baselining. The migration test covers a V1-compatible
 schema adoption and proves client records survive. It does not certify arbitrary legacy data.
 
-The old Python API and `database/br09_fill_atomicity.sql` are not part of this startup path.
-Do not apply that trigger script to the new trading database: Java already performs settlement.
+The old Python API and `database/br09_fill_atomicity.sql` trigger script have been removed.
+Never reinstall that trigger on the trading database: Java already performs settlement.
 
 ## Troubleshooting
 

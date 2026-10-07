@@ -24,7 +24,6 @@ describe('App', () => {
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('.brand-name')?.textContent).toContain('Rocket Trading Platform');
-    expect(compiled.querySelector('.topnav')?.textContent).toContain('Portfolio');
-    expect(compiled.querySelector('.topnav')?.textContent).toContain('Perpetual Futures');
+    expect(compiled.querySelector('.topnav')?.textContent).toContain('Home');
   });
 });

@@ -99,7 +99,8 @@ class TradingIntegrationIT {
         service.executeOrder(filled);
         assertMoney("110", db.queryForObject("SELECT executed_price FROM fills", BigDecimal.class));
         long stale = accepted("BUY", "1", "stale");
-        doReturn(quote("AAPL", "100", "101", Instant.now().minusSeconds(120))).when(quotes).fetchQuote(anyString(), anyString());
+        // Older than quotes.fauxnance.max-age-seconds (default 900)
+        doReturn(quote("AAPL", "100", "101", Instant.now().minusSeconds(3600))).when(quotes).fetchQuote(anyString(), anyString());
         service.executeOrder(stale);
         assertEquals("REJECTED", orderStatus(stale));
         assertMoney("9890", cash());
