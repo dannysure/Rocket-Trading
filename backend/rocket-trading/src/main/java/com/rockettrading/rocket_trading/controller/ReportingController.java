@@ -3,6 +3,8 @@ package com.rockettrading.rocket_trading.controller;
 import com.rockettrading.rocket_trading.dto.common.ApiResponse;
 import com.rockettrading.rocket_trading.dto.reporting.ClientSegmentActivityResponse;
 import com.rockettrading.rocket_trading.dto.reporting.InstrumentActivityResponse;
+import com.rockettrading.rocket_trading.dto.reporting.MarketSegmentActivityResponse;
+import com.rockettrading.rocket_trading.dto.reporting.VolumeBucketResponse;
 import com.rockettrading.rocket_trading.dto.reporting.ReportingOverviewResponse;
 import com.rockettrading.rocket_trading.service.ReportingService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -46,5 +48,22 @@ public class ReportingController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to
     ) {
         return ResponseEntity.ok(ApiResponse.success(reportingService.listClientSegmentActivity(from, to)));
+    }
+
+    @GetMapping("/markets")
+    public ResponseEntity<ApiResponse<List<MarketSegmentActivityResponse>>> listMarketSegmentActivity(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(reportingService.listMarketSegmentActivity(from, to)));
+    }
+
+    @GetMapping("/volume")
+    public ResponseEntity<ApiResponse<List<VolumeBucketResponse>>> listVolume(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+            @RequestParam(defaultValue = "week") String bucket
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(reportingService.listVolume(from, to, bucket)));
     }
 }

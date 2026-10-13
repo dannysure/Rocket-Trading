@@ -6,6 +6,12 @@ import jakarta.validation.constraints.NotBlank;
 public record SignInRequest(
         @NotBlank(message = "email is required")
         @Email(message = "email must be valid")
-        String email
+        String email,
+        @NotBlank(message = "password is required")
+        String password
 ) {
+    @Override
+    public String toString() {
+        return "SignInRequest[email=" + email + "]";
+    }
 }

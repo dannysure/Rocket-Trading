@@ -1,6 +1,7 @@
 package com.rockettrading.rocket_trading.config;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
@@ -12,9 +13,10 @@ import org.springframework.security.oauth2.client.registration.InMemoryClientReg
  * Registers OAuth 2.0 provider:
  * - GitHub
  * 
- * Environment variables:
- * - OAUTH_GITHUB_CLIENT_ID (required)
- * - OAUTH_GITHUB_CLIENT_SECRET (required)
+ * Environment variables (GitHub sign-in is offered only when both are set;
+ * email and password sign-in works either way):
+ * - OAUTH_GITHUB_CLIENT_ID
+ * - OAUTH_GITHUB_CLIENT_SECRET
  * - OAUTH_REDIRECT_URI (optional, defaults to http://localhost:4200/auth/callback)
  */
 @Configuration
@@ -30,19 +32,11 @@ public class OAuthConfig {
   private String redirectUri;
 
   /**
-   * OAuth 2.0 Client Registration Repository
-   * In-memory registration of configured OAuth providers
-   * Requires OAUTH_GITHUB_CLIENT_ID and OAUTH_GITHUB_CLIENT_SECRET to be set
+   * OAuth 2.0 Client Registration Repository, registered only when GitHub credentials are configured
    */
   @Bean
+  @ConditionalOnExpression("!'${oauth.github.client-id:}'.isBlank() and !'${oauth.github.client-secret:}'.isBlank()")
   public InMemoryClientRegistrationRepository clientRegistrationRepository() {
-    // GitHub OAuth is required for application to function
-    if (githubClientId.isEmpty() || githubClientSecret.isEmpty()) {
-      throw new IllegalStateException(
-        "GitHub OAuth credentials are required. Set OAUTH_GITHUB_CLIENT_ID and OAUTH_GITHUB_CLIENT_SECRET"
-      );
-    }
-    
     return new InMemoryClientRegistrationRepository(githubClientRegistration());
   }
 

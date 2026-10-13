@@ -35,8 +35,16 @@ now registers/signs in a fixture client against Spring, submits orders, polls fo
 shows the persisted cash/positions, and renders the order audit timeline.
 The starting catalogue is AAPL, MSFT, GOOGL, BTCUSD and ETHUSD.
 
-A valid quote-provider key, paths and current timestamped quotes are needed for live orders.
-Without them, registration/sign-in work and attempted orders are recorded as rejected.
+A valid quote-provider key is needed to price orders. Sign-in is email and password; GitHub sign-in
+is offered too when `OAUTH_GITHUB_CLIENT_ID`/`SECRET` are set. Set `FIXTURE_PASSWORD` in `.env` to get
+the demo accounts: `joanna@example.com` (client), `priya@rocket.internal` (analyst: Insights) and
+`david@rocket.internal` (operations: Insights and Trade lookup).
+
+Instruments cover US, UK (US listings) and Indian equities, FX and crypto; everything settles in the
+USD account at the FX rate recorded on the fill. An order whose market has no current price (e.g. NSE
+outside its hours) is accepted and waits, retrying every `TRADING_DEFERRAL_RETRY_SECONDS`, and expires
+after `TRADING_DEFERRAL_MAX_HOURS`. Internal reporting reads a snapshot refreshed every
+`REPORTING_REFRESH_MS`, never the live order tables.
 For a deterministic demo without an API key, use the isolated browser-test stack in the guide.
 
 ```sh
@@ -73,9 +81,9 @@ See [the API guide](docs/api/README.md) and [OpenAPI contract](docs/api/openapi.
 
 ## Scope
 
-This is a local fixture demo: email-only sign-in and user-selected starting cash are not
-production authentication or banking. The PostgreSQL connection and core transaction tests
-are implemented; full BRD compliance also needs secure identity, wider market/currency
-support, isolated reporting, operational audit access and an additional capability.
+This is a local demo: practice cash is modelled in-platform (no banking integration), and the
+fixture accounts must never be enabled in a shared environment. Roles limit access: clients see
+only their own book, analysts see aggregate reporting, operations can trace any trade (every lookup
+is itself logged). The additional capability (BR-18) is the client watchlist.
 
 The authoritative trading schema is `backend/rocket-trading/src/main/resources/db/migration/`.

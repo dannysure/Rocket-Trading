@@ -16,13 +16,14 @@ public record OAuthLoginResponse(
         String tokenType,
         Long expiresIn,
         String provider,
-        String error
+        String error,
+        String role
 ) {
     /**
      * Create success response with user info
      */
-    public static OAuthLoginResponse success(Long clientId, String email, String name, 
-                                            String accessToken, Long expiresIn) {
+    public static OAuthLoginResponse success(Long clientId, String email, String name,
+                                            String accessToken, Long expiresIn, String role) {
         return new OAuthLoginResponse(
                 true,
                 clientId,
@@ -32,7 +33,8 @@ public record OAuthLoginResponse(
                 "Bearer",
                 expiresIn,
                 "github",
-                null
+                null,
+                role
         );
     }
 
@@ -49,7 +51,8 @@ public record OAuthLoginResponse(
                 null,
                 null,
                 null,
-                error
+                error,
+                null
         );
     }
 }

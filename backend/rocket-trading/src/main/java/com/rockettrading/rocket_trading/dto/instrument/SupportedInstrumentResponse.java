@@ -9,10 +9,11 @@ public record SupportedInstrumentResponse(
         String assetClass,
         String baseCurrency,
         boolean tradable,
-        String market
+        String market,
+        String segment,
+        String exchange
 ) {
     public static SupportedInstrumentResponse from(FinancialInstrumentRecord instrument) {
-        String market = "Crypto".equalsIgnoreCase(instrument.getAssetClass()) ? "crypto" : "stock";
         return new SupportedInstrumentResponse(
                 instrument.getInstrumentId(),
                 instrument.getTickerSymbol(),
@@ -20,7 +21,9 @@ public record SupportedInstrumentResponse(
                 instrument.getAssetClass(),
                 instrument.getBaseCurrency(),
                 instrument.isTradable(),
-                market
+                instrument.market(),
+                instrument.getMarketSegment(),
+                instrument.getListingExchange()
         );
     }
 }

@@ -15,7 +15,7 @@ public record SubmitOrderRequest(
         @NotNull(message = "quantity is required")
         @Digits(integer = 12, fraction = 6)
         BigDecimal quantity,
-        @Pattern(regexp = "stock|crypto", message = "market must be stock or crypto")
+        @Pattern(regexp = "stock|crypto|fx", message = "market must be stock, crypto or fx")
         String market,
         @Pattern(regexp = "MARKET|LIMIT", message = "orderType must be MARKET or LIMIT")
         String orderType,
@@ -26,7 +26,9 @@ public record SubmitOrderRequest(
     public SubmitOrderRequest {
         symbol = symbol == null ? null : symbol.trim().toUpperCase(java.util.Locale.ROOT);
         side = side == null ? null : side.trim().toUpperCase(java.util.Locale.ROOT);
-        market = market == null || market.isBlank() ? "stock" : market.trim().toLowerCase(java.util.Locale.ROOT);
+        market = market == null || market.isBlank()
+                ? com.rockettrading.rocket_trading.service.QuoteService.marketFor(symbol)
+                : market.trim().toLowerCase(java.util.Locale.ROOT);
         orderType = orderType == null || orderType.isBlank() ? "MARKET" : orderType.trim().toUpperCase(java.util.Locale.ROOT);
     }
 

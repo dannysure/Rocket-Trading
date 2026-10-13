@@ -13,18 +13,21 @@ import java.time.LocalDate;
 public interface ClientRepository {
 
     @Select("""
-            select client_id, client_full_name as name, email_address as email
+            select client_id, client_full_name as name, email_address as email, user_role as role
             from client_profiles
             where client_id = #{clientId}
             """)
     Client findById(long clientId);
 
     @Select("""
-            select client_id, client_full_name as name, email_address as email
+            select client_id, client_full_name as name, email_address as email, user_role as role
             from client_profiles
             where lower(email_address) = lower(#{email})
             """)
     Client findByEmail(String email);
+
+    @Select("select password_hash from client_profiles where client_id = #{clientId}")
+    String findPasswordHash(long clientId);
 
     @Insert("""
             insert into client_profiles (client_id, client_full_name, email_address, date_of_birth, risk_profile)
@@ -33,6 +36,12 @@ public interface ClientRepository {
     int insertProfile(@Param("client") Client client,
                       @Param("dateOfBirth") LocalDate dateOfBirth,
                       @Param("riskProfile") String riskProfile);
+
+    @Update("update client_profiles set password_hash = #{passwordHash} where client_id = #{clientId}")
+    int updatePasswordHash(@Param("clientId") long clientId, @Param("passwordHash") String passwordHash);
+
+    @Update("update client_profiles set user_role = #{role} where client_id = #{clientId}")
+    int updateRole(@Param("clientId") long clientId, @Param("role") String role);
 
     @Update("""
             update client_profiles

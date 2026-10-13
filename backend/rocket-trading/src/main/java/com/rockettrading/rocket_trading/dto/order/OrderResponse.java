@@ -8,23 +8,42 @@ import java.time.Instant;
 public record OrderResponse(
         long orderId,
         String symbol,
+        String instrumentName,
+        String market,
         String side,
         String orderType,
         BigDecimal quantity,
+        BigDecimal limitPrice,
         String status,
         String rejectionReason,
-        Instant submittedAt
+        Instant submittedAt,
+        // True while an accepted order waits for its market to publish a current price
+        boolean awaitingMarket,
+        String instrumentCurrency,
+        BigDecimal executedPrice,
+        BigDecimal settlementAmount,
+        String settlementCurrency,
+        Instant executedAt
 ) {
-    public static OrderResponse from(OrderRecord orderRecord) {
+    public static OrderResponse from(OrderRecord order) {
         return new OrderResponse(
-                orderRecord.getOrderId(),
-                orderRecord.getSymbol(),
-                orderRecord.getOrderSide(),
-                orderRecord.getOrderType(),
-                orderRecord.getRequestedQuantity(),
-                orderRecord.getOrderStatus(),
-                orderRecord.getRejectionReason(),
-                orderRecord.getSubmittedAt()
+                order.getOrderId(),
+                order.getSymbol(),
+                order.getInstrumentName(),
+                order.getMarket(),
+                order.getOrderSide(),
+                order.getOrderType(),
+                order.getRequestedQuantity(),
+                order.getLimitPrice(),
+                order.getOrderStatus(),
+                order.getRejectionReason(),
+                order.getSubmittedAt(),
+                "ACCEPTED".equals(order.getOrderStatus()) && order.getNextExecutionAt() != null,
+                order.getInstrumentCurrency(),
+                order.getExecutedPrice(),
+                order.getSettlementAmount(),
+                order.getSettlementCurrency(),
+                order.getExecutedAt()
         );
     }
 }
