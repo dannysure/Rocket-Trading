@@ -1,7 +1,7 @@
 # Spring trading API
 
 [openapi.yaml](openapi.yaml) describes the Spring Boot API at `/api/v1`.
-The checked-in Angular app in [Frontend/](C:/Users/Administrator/programming/Rocket-Trading/Frontend)
+The checked-in Angular app in `frontend/`
 calls that same interface directly from `http://localhost:4200` to `http://localhost:8081/api/v1`.
 The contract documents behavior; Spring controllers and validation enforce it.
 
