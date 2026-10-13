@@ -1,5 +1,3 @@
-version: '3.8'
-
 # E2E Testing Compose Override
 # This file extends docker-compose.yml with e2e-specific configurations
 # Merge with main compose: docker compose -f docker-compose.yml -f compose.e2e.yaml up
@@ -8,7 +6,7 @@ services:
   # Override frontend to use port 4200 for e2e tests
   ui:
     build:
-      context: ./frontend
+      context: ./Frontend
       dockerfile: Dockerfile
     environment:
       API_BASE_URL: http://localhost:8081

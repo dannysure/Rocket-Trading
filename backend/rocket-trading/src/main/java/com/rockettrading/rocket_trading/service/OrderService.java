@@ -2,6 +2,9 @@ package com.rockettrading.rocket_trading.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rockettrading.rocket_trading.dto.event.OrderAcceptedEvent;
+import com.rockettrading.rocket_trading.dto.event.OrderFilledEvent;
+import com.rockettrading.rocket_trading.dto.event.OrderRejectedEvent;
 import com.rockettrading.rocket_trading.dto.order.*;
 import com.rockettrading.rocket_trading.exception.*;
 import com.rockettrading.rocket_trading.model.Quote;
@@ -9,6 +12,8 @@ import com.rockettrading.rocket_trading.repository.*;
 import com.rockettrading.rocket_trading.repository.model.*;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +38,9 @@ public class OrderService {
     private final QuoteProvider quoteProvider;
     private final Validator validator;
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<OrderEventProducer> eventProducer;
+    private final ObjectProvider<OrderCacheService> orderCacheService;
+    private final ObjectProvider<RateLimitService> rateLimitService;
 
     // Return business rejections normally so their records commit. The controller chooses HTTP 409.
     @Transactional
@@ -41,6 +49,11 @@ public class OrderService {
         if (!violations.isEmpty()) throw new IllegalArgumentException(violations.iterator().next().getMessage());
         if (key == null || !key.matches("[A-Za-z0-9._:-]{1,100}")) {
             throw new IllegalArgumentException("Idempotency-Key is required (1-100 letters, digits, '.', '_', ':', '-')");
+        }
+        // Check rate limit (100 orders per minute)
+        RateLimitService rateLimiter = rateLimitService.getIfAvailable();
+        if (rateLimiter != null && !rateLimiter.isAllowed(clientId)) {
+            throw new IllegalArgumentException("Rate limit exceeded: maximum 100 orders per minute");
         }
         // One account lock serializes same-client submissions and concurrent settlement.
         ClientAccountRecord account = requireLockedAccount(clientId);
@@ -115,9 +128,25 @@ public class OrderService {
     }
 
     public OrderResponse getOrder(long clientId, long orderId) {
+        // Try cache first (30s TTL)
+        OrderResponse cached = orderCacheService.getIfAvailable() == null
+            ? null
+            : orderCacheService.getIfAvailable().getOrder(orderId);
+        if (cached != null) {
+            return cached;
+        }
+        
+        // Cache miss: query database
         OrderRecord order = orderRepository.findByIdAndClientId(orderId, clientId);
         if (order == null) throw new NotFoundException("ORDER_NOT_FOUND", "Order was not found for the signed-in client");
-        return OrderResponse.from(order);
+        
+        // Convert and cache result
+        OrderResponse response = OrderResponse.from(order);
+        if (orderCacheService.getIfAvailable() != null) {
+            orderCacheService.getIfAvailable().cacheOrder(orderId, response);
+        }
+        
+        return response;
     }
 
     public List<FillResponse> listFills(long clientId, long orderId) {
@@ -240,6 +269,113 @@ public class OrderService {
         orderRepository.updateStatus(order);
         audit("orders", order.getOrderId(), order.getClientId(), Map.of("status", previous),
                 Map.of("status", status, "reason", reason == null ? "" : reason));
+
+        // Publish events for downstream consumers (workers, analytics, notifications)
+        if ("ACCEPTED".equals(status)) {
+            publishOrderAcceptedEvent(order);
+        } else if ("FILLED".equals(status)) {
+            // Invalidate cache when order is filled (status is terminal)
+            if (orderCacheService.getIfAvailable() != null) {
+                orderCacheService.getIfAvailable().invalidateOrder(order.getOrderId());
+            }
+            publishOrderFilledEvent(order);
+        } else if ("REJECTED".equals(status)) {
+            // Invalidate cache when order is rejected (status is terminal)
+            if (orderCacheService.getIfAvailable() != null) {
+                orderCacheService.getIfAvailable().invalidateOrder(order.getOrderId());
+            }
+            publishOrderRejectedEvent(order, reason);
+        }
+    }
+
+    /**
+     * Publish OrderAcceptedEvent to trigger execution workers.
+     * Called when order transitions from SUBMITTED to ACCEPTED.
+     */
+    private void publishOrderAcceptedEvent(OrderRecord order) {
+        try {
+            FinancialInstrumentRecord instrument = instrumentRepository.findByTicker(order.getSymbol());
+            if (instrument != null && order.getClientId() > 0) {
+                OrderAcceptedEvent event = new OrderAcceptedEvent(
+                        order.getOrderId(),
+                        order.getClientId(),
+                        order.getAccountId(),
+                        order.getInstrumentId(),
+                        order.getSymbol(),
+                        order.getMarket(),
+                        order.getOrderSide(),
+                        order.getOrderType(),
+                        order.getRequestedQuantity(),
+                        order.getLimitPrice(),
+                        Instant.now()
+                );
+                if (eventProducer.getIfAvailable() != null) {
+                    eventProducer.getIfAvailable().publishOrderAccepted(event);
+                }
+            }
+        } catch (Exception e) {
+            // Log but don't fail - order is already ACCEPTED in database
+            // Retry will happen on next polling cycle if Kafka publish failed
+            org.slf4j.LoggerFactory.getLogger(this.getClass())
+                    .warn("Failed to publish OrderAcceptedEvent for orderId: {}", order.getOrderId(), e);
+        }
+    }
+
+    /**
+     * Publish OrderFilledEvent for analytics and notifications.
+     * Called when order transitions from ACCEPTED to FILLED.
+     */
+    private void publishOrderFilledEvent(OrderRecord order) {
+        try {
+            FillRecord fill = fillRepository.findByOrderId(order.getOrderId()).stream().findFirst().orElse(null);
+            TransactionRecord transaction = transactionRepository.findByOrderId(order.getOrderId()).stream().findFirst().orElse(null);
+
+            if (fill != null && transaction != null) {
+                OrderFilledEvent event = new OrderFilledEvent(
+                        order.getOrderId(),
+                        order.getClientId(),
+                        fill.getFillId(),
+                        order.getSymbol(),
+                        order.getOrderSide(),
+                        fill.getExecutedQuantity(),
+                        fill.getExecutedPrice(),
+                        fill.getExecutedAt(),
+                        transaction.getTransactionId()
+                );
+                if (eventProducer.getIfAvailable() != null) {
+                    eventProducer.getIfAvailable().publishOrderFilled(event);
+                }
+            }
+        } catch (Exception e) {
+            // Log but don't fail - order is already FILLED in database
+            org.slf4j.LoggerFactory.getLogger(this.getClass())
+                    .warn("Failed to publish OrderFilledEvent for orderId: {}", order.getOrderId(), e);
+        }
+    }
+
+    /**
+     * Publish OrderRejectedEvent for notifications.
+     * Called when order transitions to REJECTED.
+     */
+    private void publishOrderRejectedEvent(OrderRecord order, String reason) {
+        try {
+            String stage = "SUBMITTED".equals(order.getOrderStatus()) ? "ACCEPTANCE" : "EXECUTION";
+            OrderRejectedEvent event = new OrderRejectedEvent(
+                    order.getOrderId(),
+                    order.getClientId(),
+                    order.getSymbol(),
+                    reason != null ? reason : "Unknown reason",
+                    stage,
+                    Instant.now()
+            );
+                if (eventProducer.getIfAvailable() != null) {
+                    eventProducer.getIfAvailable().publishOrderRejected(event);
+                }
+        } catch (Exception e) {
+            // Log but don't fail - order is already REJECTED in database
+            org.slf4j.LoggerFactory.getLogger(this.getClass())
+                    .warn("Failed to publish OrderRejectedEvent for orderId: {}", order.getOrderId(), e);
+        }
     }
 
     private void recordPricing(OrderRecord order, Quote quote, String stage) {

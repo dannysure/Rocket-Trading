@@ -1,4 +1,60 @@
 services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "127.0.0.1:2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD", "echo", "ruok | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://127.0.0.1:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "cub", "kafka-ready", "-b", "localhost:9092", "1", "20"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   db:
     image: postgres:15-alpine
     restart: unless-stopped
@@ -22,13 +78,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-team_rocket_db}
       DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
       DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
       JWT_SECRET: ${JWT_SECRET:-change-me-development-jwt-secret-1234567890}
-      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
-      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-test-client-id}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-test-client-secret}
       OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:4200/auth/callback}
       FAUXNANCE_API_KEY: ${FAUXNANCE_API_KEY:-}
       FAUXNANCE_BASE_URL: ${FAUXNANCE_BASE_URL:-https://y4t9nq2bqf.execute-api.eu-west-2.amazonaws.com}
@@ -36,6 +96,13 @@ services:
       FAUXNANCE_CRYPTO_PATH: ${FAUXNANCE_CRYPTO_PATH:-/v1/quotes/{symbol}}
       FAUXNANCE_MAX_AGE_SECONDS: ${FAUXNANCE_MAX_AGE_SECONDS:-900}
       FAUXNANCE_ALLOW_STALE: ${FAUXNANCE_ALLOW_STALE:-true}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_KAFKA_ENABLED: "true"
+      TRADING_WORKER_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      SPRING_REDIS_ENABLED: "true"
     ports:
       - "127.0.0.1:8081:8081"
     healthcheck:
@@ -44,8 +111,39 @@ services:
       timeout: 10s
       retries: 10
 
+  python-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-team_rocket_db}
+      DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
+      DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      ANALYTICS_ADMIN_TOKEN: ${ANALYTICS_ADMIN_TOKEN:-}
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:8001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   ui:
-    build: ./frontend
+    build: ./Frontend
     restart: unless-stopped
     depends_on:
       - api
@@ -61,3 +159,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
+  zookeeper_data:
+  zookeeper_logs:
+  kafka_data:
