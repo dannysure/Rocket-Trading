@@ -95,7 +95,7 @@ cd backend/rocket-trading
 In another terminal:
 
 ```sh
-cd Frontend
+cd frontend
 npm ci
 npm start
 ```
@@ -131,7 +131,7 @@ stubbed. Testcontainers 1.21.4 supports current Docker API versions.
 Frontend tests and production build:
 
 ```sh
-cd Frontend
+cd frontend
 npm ci
 npm test -- --watch=false
 npm run build

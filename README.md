@@ -19,20 +19,19 @@ docker compose up --build -d
 
 
 # Running the Frontend natively
-	cd Frontend
+	cd frontend
 	npm install
 	npm start
 
 The portfolio dashboard talks directly to the Spring API at `http://localhost:8081/api/v1`.
-The optional `Frontend/.env` is only for the homepage quote proxy in [server.ts](C:/Users/Administrator/programming/Rocket-Trading/Frontend/src/server.ts),
+The optional `frontend/.env` is only for the homepage quote proxy in [server.ts](frontend/src/server.ts),
 for example `MARKET_DATA_API_KEY=your_api_key_here`.
 
 PowerShell: use `Copy-Item .env.example .env` instead of `cp`.
 Open http://localhost:4200. API: http://localhost:8081/api/v1. PostgreSQL: localhost:5435.
-The checked-in Angular app lives in [Frontend/](C:/Users/Administrator/programming/Rocket-Trading/Frontend).
-Its [portfolio page](C:/Users/Administrator/programming/Rocket-Trading/Frontend/src/app/portfolio-page.component.ts)
-now registers/signs in a fixture client against Spring, submits orders, polls for status changes,
-shows the persisted cash/positions, and renders the order audit timeline.
+The checked-in Angular app lives in [frontend/](frontend). Clients get a dashboard, trade ticket and
+blotter (orders poll for status changes and show the audit timeline); analysts and operations get
+Insights and Trade lookup.
 The starting catalogue is AAPL, MSFT, GOOGL, BTCUSD and ETHUSD.
 
 A valid quote-provider key is needed to price orders. Sign-in is email and password; GitHub sign-in
@@ -69,7 +68,7 @@ cd backend/rocket-trading
 On Windows use `mvnw.cmd` instead of `./mvnw`.
 
 ```sh
-cd Frontend
+cd frontend
 npm ci
 npm test -- --watch=false
 npm run build
