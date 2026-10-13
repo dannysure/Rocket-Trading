@@ -6,6 +6,7 @@ import com.rockettrading.rocket_trading.dto.auth.RegisterClientRequest;
 import com.rockettrading.rocket_trading.dto.auth.SessionResponse;
 import com.rockettrading.rocket_trading.dto.auth.SignInRequest;
 import com.rockettrading.rocket_trading.dto.auth.UpdateProfileRequest;
+import com.rockettrading.rocket_trading.exception.ApiException;
 import com.rockettrading.rocket_trading.exception.ConflictException;
 import com.rockettrading.rocket_trading.exception.UnauthorizedException;
 import com.rockettrading.rocket_trading.model.Client;
@@ -15,6 +16,7 @@ import com.rockettrading.rocket_trading.repository.SessionRepository;
 import com.rockettrading.rocket_trading.security.AuthenticatedClient;
 import com.rockettrading.rocket_trading.security.JwtService;
 import com.rockettrading.rocket_trading.security.LoginAttemptGuard;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Service
@@ -29,6 +32,9 @@ public class AuthService {
     static final Duration SESSION_LENGTH = Duration.ofHours(8);
     // Same answer for an unknown email and a wrong password, so sign-in never reveals who is registered
     private static final String INVALID_CREDENTIALS = "Email or password is incorrect";
+    static final int MINIMUM_AGE = 18;
+    // Anything older is a typo (e.g. 1092 for 1992), not a real client
+    static final int MAXIMUM_AGE = 120;
 
     private final ClientRepository clientRepository;
     private final SessionRepository sessionRepository;
@@ -55,6 +61,10 @@ public class AuthService {
     public ClientRegistrationResponse register(RegisterClientRequest request) {
         if (clientRepository.findByEmail(request.email()) != null) {
             throw new ConflictException("CLIENT_ALREADY_EXISTS", "A client with that email already exists");
+        }
+
+        if (request.dateOfBirth() != null) {
+            checkDateOfBirth(request.dateOfBirth(), LocalDate.now());
         }
 
         Client client = new Client(generatePositiveId(), request.name(), request.email());
@@ -93,10 +103,10 @@ public class AuthService {
             throw new UnauthorizedException("CLIENT_NOT_FOUND", "Client not found");
         }
 
-        client.setName(request.name() != null ? request.name() : client.getName());
-        LocalDate dob = request.dateOfBirth();
+        checkDateOfBirth(request.dateOfBirth(), LocalDate.now());
+        client.setName(request.name().trim());
         String riskProfile = request.riskProfile() != null ? request.riskProfile() : "Balanced";
-        clientRepository.updateProfile(clientId, client.getName(), dob, riskProfile);
+        clientRepository.updateProfile(clientId, client.getName(), request.dateOfBirth(), riskProfile);
 
         return ClientRegistrationResponse.from(client.register(Instant.now()));
     }
@@ -118,8 +128,30 @@ public class AuthService {
                 client.getName(),
                 session.accessToken(),
                 SESSION_LENGTH.toSeconds(),
-                client.getRole()
+                client.getRole(),
+                clientRepository.findDateOfBirth(client.getClientId()) != null
         );
+    }
+
+    /** Rejects a date of birth in the future, implausibly long ago, or belonging to someone under 18. */
+    static void checkDateOfBirth(LocalDate dateOfBirth, LocalDate today) {
+        if (dateOfBirth == null) {
+            throw invalidDateOfBirth("Enter your date of birth");
+        }
+        if (dateOfBirth.isAfter(today)) {
+            throw invalidDateOfBirth("Date of birth cannot be in the future");
+        }
+        int age = Period.between(dateOfBirth, today).getYears();
+        if (age > MAXIMUM_AGE) {
+            throw invalidDateOfBirth("Enter a valid date of birth");
+        }
+        if (age < MINIMUM_AGE) {
+            throw invalidDateOfBirth("You must be at least " + MINIMUM_AGE + " to open an account");
+        }
+    }
+
+    private static ApiException invalidDateOfBirth(String message) {
+        return new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DATE_OF_BIRTH", message);
     }
 
     private SessionResponse startSession(Client client) {

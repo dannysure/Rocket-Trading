@@ -4,6 +4,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { App } from './app';
 import { routes } from './app.routes';
 import { SessionStore } from './api.service';
+import { dateOfBirthProblem } from './complete-profile.component';
 import { describeAuditEvent, displaySymbol, money, orderStatus } from './format';
 
 describe('App', () => {
@@ -74,5 +75,17 @@ describe('format', () => {
     });
     expect(rejected.title).toBe('Status SUBMITTED → REJECTED');
     expect(rejected.detail).toContain('Available cash');
+  });
+
+  it('accepts a date of birth only for real dates of people 18 or over', () => {
+    const today = new Date(2026, 9, 13);
+    expect(dateOfBirthProblem('2008-10-13', today)).toBeNull();
+    expect(dateOfBirthProblem('1950-01-01', today)).toBeNull();
+    expect(dateOfBirthProblem('2008-10-14', today)).toContain('at least 18');
+    expect(dateOfBirthProblem('2027-01-01', today)).toContain('future');
+    expect(dateOfBirthProblem('2001-02-30', today)).toContain('valid');
+    expect(dateOfBirthProblem('1800-01-01', today)).toContain('valid');
+    expect(dateOfBirthProblem('20255-01-01', today)).toContain('valid');
+    expect(dateOfBirthProblem('', today)).toContain('Enter your date of birth');
   });
 });

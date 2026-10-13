@@ -26,6 +26,9 @@ public interface ClientRepository {
             """)
     Client findByEmail(String email);
 
+    @Select("select date_of_birth from client_profiles where client_id = #{clientId}")
+    LocalDate findDateOfBirth(long clientId);
+
     @Select("select password_hash from client_profiles where client_id = #{clientId}")
     String findPasswordHash(long clientId);
 

@@ -50,7 +50,9 @@ export class CallbackComponent implements OnInit {
     // Drop the token from the address bar and history before using it
     history.replaceState(null, '', '/auth/callback');
     this.auth.completeOAuth(token).subscribe({
-      next: (session) => this.router.navigateByUrl(session.role === 'CLIENT' ? '/complete-profile' : this.sessions.homeRoute()),
+      // Only clients who have not yet given a date of birth are asked for it
+      next: ({ session, profileComplete }) =>
+        this.router.navigateByUrl(session.role === 'CLIENT' && !profileComplete ? '/complete-profile' : this.sessions.homeRoute()),
       error: (e) => this.failure.set(errorMessage(e, 'GitHub sign-in failed.')),
     });
   }

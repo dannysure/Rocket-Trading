@@ -4,6 +4,7 @@ import com.rockettrading.rocket_trading.config.JwtProperties;
 import com.rockettrading.rocket_trading.dto.auth.RegisterClientRequest;
 import com.rockettrading.rocket_trading.dto.auth.SessionResponse;
 import com.rockettrading.rocket_trading.dto.auth.SignInRequest;
+import com.rockettrading.rocket_trading.dto.auth.UpdateProfileRequest;
 import com.rockettrading.rocket_trading.exception.ApiException;
 import com.rockettrading.rocket_trading.exception.ConflictException;
 import com.rockettrading.rocket_trading.exception.UnauthorizedException;
@@ -145,5 +146,67 @@ class AuthServiceLayerTest {
         verify(sessionRepository).updateExpiresAt(555L, Instant.EPOCH);
         assertNotEquals(555L, jwtService.parseToken(response.accessToken()).sessionId());
         assertEquals("CLIENT", response.role());
+        assertFalse(response.profileComplete());
+    }
+
+    @Test
+    void oauthExchangeReportsTheProfileCompleteOnceADateOfBirthIsStored() {
+        when(clientRepository.findById(7L)).thenReturn(new Client(7L, "Joanna", "joanna@example.com"));
+        when(clientRepository.findDateOfBirth(7L)).thenReturn(LocalDate.of(1992, 5, 12));
+
+        var response = authService.getOAuthUserInfo(new AuthenticatedClient(7L, 555L, "joanna@example.com"));
+
+        assertTrue(response.profileComplete());
+    }
+
+    @Test
+    void updateProfileStoresAValidAdultDateOfBirth() {
+        when(clientRepository.findById(7L)).thenReturn(new Client(7L, "Joanna", "joanna@example.com"));
+
+        authService.updateProfile(7L, new UpdateProfileRequest(" Joanna Lee ", LocalDate.of(1992, 5, 12), "Cautious"));
+
+        verify(clientRepository).updateProfile(7L, "Joanna Lee", LocalDate.of(1992, 5, 12), "Cautious");
+    }
+
+    @Test
+    void updateProfileRejectsMinorsAndStoresNothing() {
+        when(clientRepository.findById(7L)).thenReturn(new Client(7L, "Joanna", "joanna@example.com"));
+        LocalDate seventeen = LocalDate.now().minusYears(18).plusDays(1);
+
+        ApiException failure = assertThrows(ApiException.class,
+                () -> authService.updateProfile(7L, new UpdateProfileRequest("Joanna", seventeen, "Balanced")));
+
+        assertEquals(HttpStatus.BAD_REQUEST, failure.getStatus());
+        assertEquals("INVALID_DATE_OF_BIRTH", failure.getCode());
+        verify(clientRepository, never()).updateProfile(anyLong(), any(), any(), any());
+    }
+
+    @Test
+    void dateOfBirthMustBeRealAndAtLeastEighteenYearsAgo() {
+        LocalDate today = LocalDate.of(2026, 10, 13);
+
+        assertDoesNotThrow(() -> AuthService.checkDateOfBirth(LocalDate.of(2008, 10, 13), today));
+        assertDoesNotThrow(() -> AuthService.checkDateOfBirth(LocalDate.of(1950, 1, 1), today));
+        // Born on 29 February: turns 18 on 1 March in a non-leap year
+        assertThrows(ApiException.class, () -> AuthService.checkDateOfBirth(LocalDate.of(2008, 2, 29), LocalDate.of(2026, 2, 28)));
+        assertDoesNotThrow(() -> AuthService.checkDateOfBirth(LocalDate.of(2008, 2, 29), LocalDate.of(2026, 3, 1)));
+
+        for (LocalDate invalid : new LocalDate[]{
+                LocalDate.of(2008, 10, 14),
+                LocalDate.of(2027, 1, 1),
+                LocalDate.of(1800, 1, 1),
+                null}) {
+            ApiException failure = assertThrows(ApiException.class, () -> AuthService.checkDateOfBirth(invalid, today));
+            assertEquals("INVALID_DATE_OF_BIRTH", failure.getCode());
+        }
+    }
+
+    @Test
+    void registerRejectsAnUnderageDateOfBirth() {
+        when(clientRepository.findByEmail("teen@example.com")).thenReturn(null);
+
+        assertThrows(ApiException.class, () -> authService.register(new RegisterClientRequest("Teen", "teen@example.com",
+                "correct-horse", LocalDate.now().minusYears(15), null, null)));
+        verify(clientRepository, never()).insertProfile(any(), any(), any());
     }
 }

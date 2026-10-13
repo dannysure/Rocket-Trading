@@ -395,9 +395,9 @@ export class AuthApi {
   }
 
   /** Exchanges the one-time token from the GitHub redirect for this browser's session. */
-  completeOAuth(redirectToken: string): Observable<StoredSession> {
+  completeOAuth(redirectToken: string): Observable<{ session: StoredSession; profileComplete: boolean }> {
     return this.http
-      .post<ApiResponse<{ clientId: number; email: string; name: string; accessToken: string; expiresIn: number; role: Role }>>(
+      .post<ApiResponse<{ clientId: number; email: string; name: string; accessToken: string; expiresIn: number; role: Role; profileComplete?: boolean }>>(
         `${API_BASE_URL}/auth/oauth/success`,
         {},
         { headers: { Authorization: `Bearer ${redirectToken}` } },
@@ -413,7 +413,7 @@ export class AuthApi {
             expiresAt: new Date(Date.now() + r.data.expiresIn * 1000).toISOString(),
           };
           this.sessions.set(session);
-          return session;
+          return { session, profileComplete: r.data.profileComplete ?? false };
         }),
       );
   }
