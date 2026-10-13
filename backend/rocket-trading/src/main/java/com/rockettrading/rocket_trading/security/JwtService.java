@@ -40,6 +40,7 @@ public class JwtService {
     public AuthenticatedClient parseToken(String token) {
         Claims claims = Jwts.parser()
                 .verifyWith(signingKey())
+            .requireIssuer(jwtProperties.getIssuer())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
@@ -51,10 +52,24 @@ public class JwtService {
     }
 
     private SecretKey signingKey() {
-        byte[] rawSecret = jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8);
+        String configuredSecret = jwtProperties.getSecret();
+        if (configuredSecret == null || configuredSecret.isBlank()) {
+            throw new IllegalStateException("JWT secret must be configured");
+        }
+
+        byte[] rawSecret = configuredSecret.getBytes(StandardCharsets.UTF_8);
         if (rawSecret.length >= 32) {
             return Keys.hmacShaKeyFor(rawSecret);
         }
-        return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtProperties.getSecret()));
+
+        try {
+            byte[] decodedSecret = Decoders.BASE64.decode(configuredSecret);
+            if (decodedSecret.length < 32) {
+                throw new IllegalStateException("JWT secret must be at least 32 bytes");
+            }
+            return Keys.hmacShaKeyFor(decodedSecret);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException("JWT secret must be at least 32 bytes or valid base64", exception);
+        }
     }
 }
