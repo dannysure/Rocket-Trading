@@ -32,9 +32,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @Testcontainers
-// Worker and scheduled reporting refresh stay out of the way; tests drive both explicitly
+// Worker, Kafka consumer and scheduled reporting refresh stay out of the way; tests drive execution explicitly
+// Redis is off too so a local instance can't serve cached orders between tests
 // Quote freshness is pinned because Spring also imports the developer's .env, which may widen it
-@SpringBootTest(properties = {"trading.worker.enabled=false", "reporting.refresh-ms=3600000", "fixtures.password=", "catalog.sync.enabled=false",
+@SpringBootTest(properties = {"trading.worker.enabled=false", "spring.kafka.enabled=false", "spring.redis.enabled=false", "reporting.refresh-ms=3600000", "fixtures.password=", "catalog.sync.enabled=false",
         "quotes.fauxnance.max-age-seconds=900", "quotes.fauxnance.fx-max-age-seconds=345600"})
 @AutoConfigureMockMvc
 class TradingIntegrationIT {

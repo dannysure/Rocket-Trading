@@ -19,6 +19,18 @@ public interface SessionRepository {
             """)
     Session findBySessionId(long sessionId);
 
+                @Select("""
+                                                select exists(
+                                                                select 1
+                                                                from client_sessions
+                                                                where session_id = #{sessionId}
+                                                                        and client_id = #{clientId}
+                                                                        and expires_at > current_timestamp
+                                                )
+                                                """)
+                boolean isActiveSessionForClient(@Param("sessionId") long sessionId,
+                                                                                                                                                 @Param("clientId") long clientId);
+
     @Insert("""
             insert into client_sessions (session_id, client_id, expires_at)
             values (#{sessionId}, #{clientId}, #{expiresAt})

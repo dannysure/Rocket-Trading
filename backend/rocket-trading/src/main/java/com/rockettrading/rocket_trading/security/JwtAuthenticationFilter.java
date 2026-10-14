@@ -1,6 +1,5 @@
 package com.rockettrading.rocket_trading.security;
 
-import com.rockettrading.rocket_trading.model.Session;
 import com.rockettrading.rocket_trading.repository.SessionRepository;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -45,8 +44,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             AuthenticatedClient authenticatedClient = jwtService.parseToken(header.substring(7));
-            Session session = sessionRepository.findBySessionId(authenticatedClient.sessionId());
-            if (session == null || !session.isActive()) {
+                if (!sessionRepository.isActiveSessionForClient(
+                    authenticatedClient.sessionId(), authenticatedClient.clientId())) {
                 authenticationEntryPoint.commence(
                         request,
                         response,
