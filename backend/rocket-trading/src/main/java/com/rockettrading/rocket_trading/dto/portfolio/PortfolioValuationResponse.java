@@ -9,6 +9,8 @@ public record PortfolioValuationResponse(
         String currency,
         BigDecimal cashBalance,
         BigDecimal holdingsValue,
+        // Equity in perpetual futures (isolated margin plus unrealized PnL); its collateral left cashBalance
+        BigDecimal perpsValue,
         BigDecimal totalValue,
         BigDecimal netDeposits,
         BigDecimal totalReturn,

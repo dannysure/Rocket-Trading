@@ -1,5 +1,6 @@
 package com.rockettrading.rocket_trading.service;
 
+import com.rockettrading.rocket_trading.dto.perps.PerpAccountResponse;
 import com.rockettrading.rocket_trading.dto.portfolio.PortfolioSummaryResponse;
 import com.rockettrading.rocket_trading.dto.portfolio.PortfolioValuationResponse;
 import com.rockettrading.rocket_trading.dto.portfolio.PortfolioValuationResponse.PositionValuation;
@@ -27,17 +28,20 @@ public class PortfolioService {
     private final HoldingRepository holdingRepository;
     private final TransactionRepository transactionRepository;
     private final QuoteService quoteService;
+    private final PerpetualFuturesService perpetualFuturesService;
     private final TransactionTemplate snapshot;
 
     public PortfolioService(ClientAccountRepository clientAccountRepository,
                             HoldingRepository holdingRepository,
                             TransactionRepository transactionRepository,
                             QuoteService quoteService,
+                            PerpetualFuturesService perpetualFuturesService,
                             PlatformTransactionManager transactionManager) {
         this.clientAccountRepository = clientAccountRepository;
         this.holdingRepository = holdingRepository;
         this.transactionRepository = transactionRepository;
         this.quoteService = quoteService;
+        this.perpetualFuturesService = perpetualFuturesService;
         // One consistent snapshot: cash and holdings always reflect the same set of settled trades
         this.snapshot = new TransactionTemplate(transactionManager);
         this.snapshot.setReadOnly(true);
@@ -81,20 +85,33 @@ public class PortfolioService {
                 .filter(p -> p.marketValue() != null && p.changePercent() != null)
                 .map(p -> dayChangeOf(p.marketValue(), p.changePercent()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal totalValue = book.cashBalance().add(holdingsValue);
+        // Perp margin is paid out of cash, so without it opening a position would read as a loss
+        PerpEquity perps = perpEquity(clientId);
+        BigDecimal totalValue = book.cashBalance().add(holdingsValue).add(perps.value());
 
         return new PortfolioValuationResponse(
                 currency,
                 book.cashBalance(),
                 holdingsValue.setScale(2, RoundingMode.HALF_UP),
+                perps.value().setScale(2, RoundingMode.HALF_UP),
                 totalValue.setScale(2, RoundingMode.HALF_UP),
                 book.netDeposits(),
                 totalValue.subtract(book.netDeposits()).setScale(2, RoundingMode.HALF_UP),
                 dayChange.setScale(2, RoundingMode.HALF_UP),
-                positions.stream().allMatch(PositionValuation::priced),
+                positions.stream().allMatch(PositionValuation::priced) && perps.priced(),
                 Instant.now(),
                 positions
         );
+    }
+
+    private PerpEquity perpEquity(long clientId) {
+        PerpAccountResponse account = perpetualFuturesService.getAccount(clientId);
+        // Unpriced positions still count at their posted margin; complete=false flags the estimate
+        boolean priced = account.positions().stream().allMatch(position -> position.markPrice() != null);
+        return new PerpEquity(account.totalMargin().add(account.unrealizedPnl()), priced);
+    }
+
+    private record PerpEquity(BigDecimal value, boolean priced) {
     }
 
     private PositionValuation value(PositionResponse position, String accountCurrency) {
