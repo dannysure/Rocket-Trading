@@ -9,9 +9,11 @@ import java.time.Instant;
 public class InstrumentActivityRecord {
     private String symbol;
     private String assetClass;
+    private String marketSegment;
     private long orderCount;
     private long fillCount;
     private BigDecimal buyQuantity;
     private BigDecimal sellQuantity;
+    private BigDecimal totalNotional;
     private Instant lastSubmittedAt;
 }

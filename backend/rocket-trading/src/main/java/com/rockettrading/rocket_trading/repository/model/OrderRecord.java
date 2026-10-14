@@ -22,4 +22,14 @@ public class OrderRecord {
     private String orderStatus;
     private String rejectionReason;
     private Instant submittedAt;
+    // Set while an accepted order waits for a current market price
+    private Instant nextExecutionAt;
+
+    // Read-only context joined from the instrument and fill for display
+    private String instrumentName;
+    private String instrumentCurrency;
+    private BigDecimal executedPrice;
+    private BigDecimal settlementAmount;
+    private String settlementCurrency;
+    private Instant executedAt;
 }

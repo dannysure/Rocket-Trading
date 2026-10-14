@@ -1,7 +1,7 @@
 # Spring trading API
 
 [openapi.yaml](openapi.yaml) describes the Spring Boot API at `/api/v1`.
-The checked-in Angular app in `frontend/`
+The checked-in Angular app in [frontend/](../../frontend)
 calls that same interface directly from `http://localhost:4200` to `http://localhost:8081/api/v1`.
 The contract documents behavior; Spring controllers and validation enforce it.
 

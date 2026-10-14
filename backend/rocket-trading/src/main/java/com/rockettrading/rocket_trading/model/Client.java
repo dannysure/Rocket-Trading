@@ -13,6 +13,7 @@ public class Client {
     private long clientId;
     private String name;
     private String email;
+    private String role = "CLIENT";
 
     public Client() {
     }
@@ -82,6 +83,14 @@ public class Client {
             throw new IllegalArgumentException("email must be a valid email address");
         }
         this.email = email.trim();
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role == null || role.isBlank() ? "CLIENT" : role.trim().toUpperCase();
     }
 
     private void requireRegisteredIdentity() {

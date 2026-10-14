@@ -2,6 +2,7 @@ package com.rockettrading.rocket_trading.controller;
 
 import com.rockettrading.rocket_trading.dto.common.ApiResponse;
 import com.rockettrading.rocket_trading.dto.portfolio.PortfolioSummaryResponse;
+import com.rockettrading.rocket_trading.dto.portfolio.PortfolioValuationResponse;
 import com.rockettrading.rocket_trading.security.AuthenticatedClient;
 import com.rockettrading.rocket_trading.service.PortfolioService;
 import org.springframework.http.ResponseEntity;
@@ -23,5 +24,11 @@ public class PortfolioController {
     public ResponseEntity<ApiResponse<PortfolioSummaryResponse>> getPortfolioSummary(Authentication authentication) {
         AuthenticatedClient authenticatedClient = (AuthenticatedClient) authentication.getPrincipal();
         return ResponseEntity.ok(ApiResponse.success(portfolioService.getPortfolioSummary(authenticatedClient.clientId())));
+    }
+
+    @GetMapping("/valuation")
+    public ResponseEntity<ApiResponse<PortfolioValuationResponse>> getValuation(Authentication authentication) {
+        AuthenticatedClient authenticatedClient = (AuthenticatedClient) authentication.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.success(portfolioService.getValuation(authenticatedClient.clientId())));
     }
 }

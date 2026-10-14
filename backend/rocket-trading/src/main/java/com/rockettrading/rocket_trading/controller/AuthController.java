@@ -12,20 +12,36 @@ import com.rockettrading.rocket_trading.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
     private final AuthService authService;
+    private final ObjectProvider<ClientRegistrationRepository> oauthRegistrations;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, ObjectProvider<ClientRegistrationRepository> oauthRegistrations) {
         this.authService = authService;
+        this.oauthRegistrations = oauthRegistrations;
+    }
+
+    /** Which sign-in methods this deployment offers, so the sign-in page only shows working ones. */
+    @GetMapping("/providers")
+    public ResponseEntity<ApiResponse<Map<String, Boolean>>> providers() {
+        return ResponseEntity.ok(ApiResponse.success(Map.of(
+                "password", true,
+                "github", oauthRegistrations.getIfAvailable() != null
+        )));
     }
 
     @PostMapping("/register")
@@ -70,8 +86,6 @@ public class AuthController {
             Authentication authentication
     ) {
         AuthenticatedClient authenticatedClient = (AuthenticatedClient) authentication.getPrincipal();
-        return ResponseEntity.ok(ApiResponse.success(authService.getOAuthUserInfo(
-                authenticatedClient.clientId()
-        )));
+        return ResponseEntity.ok(ApiResponse.success(authService.getOAuthUserInfo(authenticatedClient)));
     }
 }

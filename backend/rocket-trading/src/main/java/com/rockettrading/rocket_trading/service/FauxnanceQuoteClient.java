@@ -2,6 +2,7 @@ package com.rockettrading.rocket_trading.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.rockettrading.rocket_trading.config.FauxnanceProperties;
+import com.rockettrading.rocket_trading.dto.quote.CandleResponse;
 import com.rockettrading.rocket_trading.exception.ExternalServiceException;
 import com.rockettrading.rocket_trading.model.Quote;
 import com.rockettrading.rocket_trading.repository.model.FinancialInstrumentRecord;
@@ -15,7 +16,10 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
 
 @Component
 public class FauxnanceQuoteClient implements QuoteProvider {
@@ -74,15 +78,18 @@ public class FauxnanceQuoteClient implements QuoteProvider {
                     .retrieve()
                     .body(JsonNode.class);
             JsonNode data = body == null ? null : body.get("data");
-            if (data == null || !data.hasNonNull("symbol")) {
+            // An instrument is only usable when Fauxnance itself says which currency it trades in
+            if (data == null || !data.hasNonNull("symbol") || !StringUtils.hasText(data.path("currency").asText(""))) {
                 return null;
             }
             FinancialInstrumentRecord instrument = new FinancialInstrumentRecord();
             instrument.setTickerSymbol(data.get("symbol").asText());
             instrument.setInstrumentName(data.path("name").asText(data.get("symbol").asText()));
             instrument.setAssetClass(assetClassFor(data.path("type").asText()));
-            instrument.setBaseCurrency(data.path("currency").asText("USD"));
+            instrument.setBaseCurrency(data.get("currency").asText().toUpperCase());
             instrument.setTradable(data.path("active").asBoolean(false));
+            instrument.setListingExchange(data.path("exchange").asText(null));
+            instrument.setMarketSegment(segmentFor(instrument.getAssetClass(), instrument.getListingExchange()));
             return instrument;
         } catch (HttpClientErrorException exception) {
             if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
@@ -93,6 +100,72 @@ public class FauxnanceQuoteClient implements QuoteProvider {
             throw new ExternalServiceException("SYMBOL_LOOKUP_FAILED",
                     "Symbol lookup is temporarily unavailable; please retry");
         }
+    }
+
+    @Override
+    public List<CandleResponse> fetchDailyCandles(String symbol, LocalDate from) {
+        if (!StringUtils.hasText(fauxnanceProperties.getApiKey())) {
+            return List.of();
+        }
+        try {
+            String uri = UriComponentsBuilder.fromPath("/v1/candles/{symbol}")
+                    .queryParam("from", from.toString())
+                    .buildAndExpand(symbol.toUpperCase())
+                    .toUriString();
+            JsonNode body = restClient.get()
+                    .uri(uri)
+                    .header("X-Api-Key", fauxnanceProperties.getApiKey())
+                    .retrieve()
+                    .body(JsonNode.class);
+            return mapCandles(body, from);
+        } catch (RestClientException | IllegalArgumentException | java.time.DateTimeException exception) {
+            // History only decorates the trade screen; pricing never depends on it
+            return List.of();
+        }
+    }
+
+    /**
+     * Real daily candles only. Fauxnance marks days it estimated rather than observed as synthetic
+     * (typically today's unfinished session); those are left out so the chart never shows a price
+     * that did not trade.
+     */
+    List<CandleResponse> mapCandles(JsonNode body, LocalDate from) {
+        JsonNode candles = body == null ? null : body.path("data").path("candles");
+        List<CandleResponse> result = new ArrayList<>();
+        if (candles == null || !candles.isArray()) {
+            return result;
+        }
+        for (JsonNode candle : candles) {
+            if (!candle.hasNonNull("date") || !candle.hasNonNull("close")) continue;
+            if (candle.path("synthetic").asBoolean(false)) continue;
+            LocalDate date = LocalDate.parse(candle.get("date").asText());
+            if (date.isBefore(from)) continue;
+            result.add(new CandleResponse(
+                    date,
+                    decimalOrNull(candle, "open"),
+                    decimalOrNull(candle, "high"),
+                    decimalOrNull(candle, "low"),
+                    new BigDecimal(candle.get("close").asText())
+            ));
+        }
+        return result;
+    }
+
+    private BigDecimal decimalOrNull(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? null : new BigDecimal(value.asText());
+    }
+
+    // NSE/BSE listings are Indian equities, LSE listings UK equities; FX and crypto keep their own segment
+    private String segmentFor(String assetClass, String exchange) {
+        if ("Crypto".equals(assetClass)) return "CRYPTO";
+        if ("FX".equals(assetClass)) return "FX";
+        if (exchange == null) return "US";
+        return switch (exchange.toUpperCase()) {
+            case "NSE", "BSE" -> "IN";
+            case "LSE", "LON" -> "UK";
+            default -> "US";
+        };
     }
 
     // Maps Fauxnance registry types onto financial_instruments.asset_class; ETFs trade like equities here
@@ -133,6 +206,9 @@ public class FauxnanceQuoteClient implements QuoteProvider {
                 capturedAt
         );
         quote.setProviderStale(providerStale);
+        quote.setCurrency(extractText(payload, "currency", null));
+        quote.setChangePercent(extractOptionalDecimal(payload, null, "changePercent"));
+        quote.setPreviousClose(extractOptionalDecimal(payload, null, "previousClose"));
         return quote;
     }
 
@@ -140,10 +216,11 @@ public class FauxnanceQuoteClient implements QuoteProvider {
         if ("crypto".equalsIgnoreCase(market)) {
             return fauxnanceProperties.getCryptoPath();
         }
-        if ("stock".equalsIgnoreCase(market)) {
+        // FX pairs are served from the same quote path as equities
+        if ("stock".equalsIgnoreCase(market) || "fx".equalsIgnoreCase(market)) {
             return fauxnanceProperties.getStockPath();
         }
-        throw new IllegalArgumentException("market must be stock or crypto");
+        throw new IllegalArgumentException("market must be stock, crypto or fx");
     }
 
     private BigDecimal extractRequiredDecimal(JsonNode payload, String... fieldNames) {

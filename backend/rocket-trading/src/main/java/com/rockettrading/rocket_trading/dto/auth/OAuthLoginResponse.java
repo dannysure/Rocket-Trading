@@ -16,13 +16,17 @@ public record OAuthLoginResponse(
         String tokenType,
         Long expiresIn,
         String provider,
-        String error
+        String error,
+        String role,
+        // False until the client has given a date of birth, so the app knows to ask for it once
+        Boolean profileComplete
 ) {
     /**
      * Create success response with user info
      */
-    public static OAuthLoginResponse success(Long clientId, String email, String name, 
-                                            String accessToken, Long expiresIn) {
+    public static OAuthLoginResponse success(Long clientId, String email, String name,
+                                            String accessToken, Long expiresIn, String role,
+                                            boolean profileComplete) {
         return new OAuthLoginResponse(
                 true,
                 clientId,
@@ -32,7 +36,9 @@ public record OAuthLoginResponse(
                 "Bearer",
                 expiresIn,
                 "github",
-                null
+                null,
+                role,
+                profileComplete
         );
     }
 
@@ -49,7 +55,9 @@ public record OAuthLoginResponse(
                 null,
                 null,
                 null,
-                error
+                error,
+                null,
+                null
         );
     }
 }

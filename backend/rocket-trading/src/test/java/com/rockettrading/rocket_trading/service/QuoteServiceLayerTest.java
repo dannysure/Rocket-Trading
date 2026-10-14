@@ -10,7 +10,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -31,10 +33,11 @@ class QuoteServiceLayerTest {
 
         assertEquals("AAPL", response.symbol());
         assertEquals("stock", response.market());
+        assertTrue(response.current());
     }
 
     @Test
-    void rejectsStaleQuoteFromProvider() {
+    void showsStaleQuoteAsNotCurrentButRefusesItForPricing() {
         QuoteProvider quoteProvider = mock(QuoteProvider.class);
         FauxnanceProperties fauxnanceProperties = new FauxnanceProperties();
         fauxnanceProperties.setMaxAgeSeconds(1);
@@ -44,7 +47,30 @@ class QuoteServiceLayerTest {
 
         when(quoteProvider.fetchQuote("BTCUSD", "crypto")).thenReturn(quote);
 
-        assertThrows(ConflictException.class, () -> quoteService.getQuote("BTCUSD", "crypto"));
+        // A closed market still shows its last price, flagged as not current
+        assertFalse(quoteService.getQuote("BTCUSD", "crypto").current());
+        ConflictException stale = assertThrows(ConflictException.class, () -> quoteService.fetchCurrentQuote("BTCUSD", "crypto"));
+        assertEquals("QUOTE_STALE", stale.getCode());
+    }
+
+    @Test
+    void fxQuotesUseTheirOwnDailyFreshnessWindow() {
+        FauxnanceProperties properties = new FauxnanceProperties();
+        properties.setMaxAgeSeconds(900);
+        properties.setFxMaxAgeSeconds(345600);
+        Quote dailyClose = new Quote("FX:GBPUSD", new BigDecimal("1.3241"), new BigDecimal("1.3243"),
+                new BigDecimal("1.3242"), 0, 0, Instant.now().minusSeconds(18 * 3600));
+        QuoteService quoteService = new QuoteService((symbol, market) -> dailyClose, properties);
+
+        assertEquals("FX:GBPUSD", quoteService.fetchCurrentQuote("FX:GBPUSD", "fx").getSymbol());
+        assertThrows(ConflictException.class, () -> quoteService.fetchCurrentQuote("FX:GBPUSD", "stock"));
+    }
+
+    @Test
+    void derivesMarketFromCanonicalSymbol() {
+        assertEquals("crypto", QuoteService.marketFor("X:BTC-USD"));
+        assertEquals("fx", QuoteService.marketFor("fx:eurusd"));
+        assertEquals("stock", QuoteService.marketFor("RELIANCE.NS"));
     }
 
     @Test

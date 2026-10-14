@@ -1,22 +1,23 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
-import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
-import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent } from '@angular/common/http';
-import { Observable, throwError } from 'rxjs';
-import { catchError, retry, tap } from 'rxjs/operators';
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { HttpClient, HttpErrorResponse, HttpInterceptorFn, HttpParams } from '@angular/common/http';
+import { Router } from '@angular/router';
+import { Observable, catchError, map, throwError } from 'rxjs';
+
+export const API_BASE_URL = 'http://localhost:8081/api/v1';
 
 // ============================================================================
-// API MODELS & INTERFACES
+// API MODELS
 // ============================================================================
 
 export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  meta?: {
-    requestId: string;
-    timestamp: string;
-  };
+  data: T;
+  meta?: { requestId: string; timestamp: string };
 }
+
+export type Role = 'CLIENT' | 'ANALYST' | 'OPERATIONS';
+export type OrderStatus = 'SUBMITTED' | 'ACCEPTED' | 'FILLED' | 'REJECTED' | 'CANCELLED';
+export type Side = 'BUY' | 'SELL';
+export type Segment = 'US' | 'UK' | 'IN' | 'FX' | 'CRYPTO';
 
 export interface SessionResponse {
   clientId: number;
@@ -24,389 +25,565 @@ export interface SessionResponse {
   expiresAt: string;
   accessToken: string;
   tokenType: string;
-}
-
-export interface ClientRegistrationResponse {
-  clientId: number;
-  email: string;
-  name: string;
-  registeredAt: string;
-}
-
-export interface RegisterClientRequest {
   name: string;
   email: string;
-  dateOfBirth: string;
-  riskProfile: 'Cautious' | 'Balanced' | 'Adventurous';
+  role: Role;
 }
 
-export interface SignInRequest {
+export interface RegisterRequest {
+  name: string;
   email: string;
+  password: string;
+  riskProfile?: 'Cautious' | 'Balanced' | 'Adventurous';
 }
 
-export interface Position {
-  holdingId: number;
-  symbol: string;
-  instrumentId: number;
-  quantity: number;
-  averageCost: number;
-  currentValue: number;
-}
-
-export interface PortfolioSummaryResponse {
-  clientId: number;
-  accountId: number;
-  accountType: string;
-  cashBalance: number;
-  currency: string;
-  positions: Position[];
-  totalValue: number;
-}
-
-export interface SupportedInstrument {
+export interface Instrument {
   instrumentId: number;
   symbol: string;
   name: string;
-  assetClass: 'Equity' | 'Bond' | 'Fund' | 'FX' | 'Crypto' | 'Cash';
+  assetClass: 'Equity' | 'FX' | 'Crypto' | string;
   baseCurrency: string;
-  isTradable: boolean;
+  tradable: boolean;
+  market: 'stock' | 'crypto' | 'fx';
+  segment: Segment;
+  exchange: string | null;
 }
 
-export interface SubmitOrderRequest {
-  symbol: string;
-  side: 'BUY' | 'SELL';
-  quantity: number;
-  market?: 'stock' | 'crypto';
-  orderType: 'MARKET' | 'LIMIT';
-  limitPrice?: number;
-}
-
-export interface OrderResponse {
-  orderId: number;
-  clientId: number;
-  instrumentId: number;
-  symbol: string;
-  side: string;
-  quantity: number;
-  orderType: string;
-  status: 'SUBMITTED' | 'ACCEPTED' | 'FILLED' | 'REJECTED';
-  submittedAt: string;
-  rejectionReason?: string;
-}
-
-export interface FillResponse {
-  fillId: number;
-  orderId: number;
-  executedQuantity: number;
-  executedPrice: number;
-  totalAmount: number;
-  executedAt: string;
-}
-
-export interface OrderTimelineResponse {
-  orderId: number;
-  events: Array<{
-    auditId: number;
-    entityName: string;
-    actionType: string;
-    recordedAt: string;
-    stateBefore: any;
-    stateAfter: any;
-  }>;
-}
-
-export interface QuoteResponse {
+export interface Quote {
   symbol: string;
   bid: number;
   ask: number;
   price: number;
-  market: string;
   capturedAt: string;
-  // The provider's cache missed a refresh; the price is older than usual but within the accepted age
+  market: string;
   delayed: boolean;
+  currency: string | null;
+  changePercent: number | null;
+  previousClose: number | null;
+  /** False while the market is closed: the price shown is its last one */
+  current: boolean;
 }
 
-type StoredSession = {
+export interface Candle {
+  date: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number;
+}
+
+export interface IndicativePrice {
+  symbol: string;
+  name: string;
+  side: Side;
+  quantity: number;
+  unitPrice: number;
+  instrumentCurrency: string;
+  fxRate: number;
+  settlementCurrency: string;
+  estimatedTotal: number;
+  availableCash: number;
+  heldQuantity: number;
+  quoteCapturedAt: string;
+  marketOpen: boolean;
+}
+
+export interface Position {
+  symbol: string;
+  name: string;
+  assetClass: string;
+  segment: Segment;
+  instrumentCurrency: string;
+  quantity: number;
+  averageCost: number | null;
+}
+
+export interface PortfolioSummary {
   clientId: number;
+  accountId: number;
+  cashBalance: number;
+  currency: string;
+  netDeposits: number;
+  positions: Position[];
+}
+
+export interface PositionValuation {
+  symbol: string;
+  name: string;
+  assetClass: string;
+  segment: Segment;
+  quantity: number;
+  averageCost: number | null;
+  instrumentCurrency: string;
+  price: number | null;
+  fxRate: number | null;
+  marketValue: number | null;
+  unrealizedReturn: number | null;
+  changePercent: number | null;
+  priceAsOf: string | null;
+  priced: boolean;
+}
+
+export interface PortfolioValuation {
+  currency: string;
+  cashBalance: number;
+  holdingsValue: number;
+  totalValue: number;
+  netDeposits: number;
+  totalReturn: number;
+  dayChange: number;
+  complete: boolean;
+  valuedAt: string;
+  positions: PositionValuation[];
+}
+
+export interface SubmitOrderRequest {
+  symbol: string;
+  side: Side;
+  quantity: number;
+  orderType: 'MARKET' | 'LIMIT';
+  limitPrice?: number;
+}
+
+export interface Order {
+  orderId: number;
+  symbol: string;
+  instrumentName: string | null;
+  market: string;
+  side: Side;
+  orderType: 'MARKET' | 'LIMIT';
+  quantity: number;
+  limitPrice: number | null;
+  status: OrderStatus;
+  rejectionReason: string | null;
+  submittedAt: string;
+  awaitingMarket: boolean;
+  instrumentCurrency: string | null;
+  executedPrice: number | null;
+  settlementAmount: number | null;
+  settlementCurrency: string | null;
+  executedAt: string | null;
+}
+
+export interface Fill {
+  fillId: number;
+  orderId: number;
+  executedQuantity: number;
+  executedPrice: number;
+  instrumentCurrency: string;
+  fxRate: number;
+  settlementAmount: number;
+  settlementCurrency: string;
+  executedAt: string;
+}
+
+export interface AuditEvent {
+  auditId: number;
+  entityName: string;
+  entityId: number;
+  actionType: string;
+  recordedAt: string;
+  stateBefore: Record<string, any> | null;
+  stateAfter: Record<string, any> | null;
+}
+
+export interface OrderTimeline {
+  orderId: number;
+  events: AuditEvent[];
+}
+
+export interface WatchlistItem {
+  instrument: Instrument;
+  addedAt: string;
+}
+
+export interface ReportingOverview {
+  from: string;
+  to: string;
+  totalOrders: number;
+  acceptedOrders: number;
+  filledOrders: number;
+  rejectedOrders: number;
+  totalFills: number;
+  totalNotional: number;
+  activeClients: number;
+  dataAsOf: string | null;
+}
+
+export interface InstrumentActivity {
+  symbol: string;
+  assetClass: string;
+  segment: Segment;
+  orderCount: number;
+  fillCount: number;
+  buyQuantity: number;
+  sellQuantity: number;
+  totalNotional: number;
+  lastSubmittedAt: string;
+}
+
+export interface ClientSegmentActivity {
+  riskProfile: string;
+  clientCount: number;
+  orderCount: number;
+  totalNotional: number;
+}
+
+export interface MarketActivity {
+  segment: Segment;
+  orderCount: number;
+  fillCount: number;
+  totalNotional: number;
+}
+
+export interface VolumeBucket {
+  periodStart: string;
+  orderCount: number;
+  fillCount: number;
+  totalNotional: number;
+}
+
+export interface OpsOrderSummary {
+  clientId: number;
+  clientName: string;
+  clientEmail: string;
+  order: Order;
+}
+
+export interface LedgerEntry {
+  transactionId: number;
+  type: string;
+  quantity: number | null;
+  unitPrice: number | null;
+  netAmount: number;
+  recordedAt: string;
+}
+
+export interface OrderTrace {
+  summary: OpsOrderSummary;
+  fills: Fill[];
+  ledger: LedgerEntry[];
+  timeline: AuditEvent[];
+}
+
+/** The message a person should see for a failed request: the API's own message when it sent one. */
+export function errorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (error instanceof HttpErrorResponse) {
+    if (error.status === 0) return 'Cannot reach Rocket Trading. Check your connection and try again.';
+    const apiMessage = error.error?.error?.message;
+    const details: { field: string; message: string }[] | undefined = error.error?.error?.details;
+    if (details?.length) return details.map((d) => d.message).join('. ');
+    if (apiMessage) return apiMessage;
+  }
+  return fallback;
+}
+
+// ============================================================================
+// SESSION
+// ============================================================================
+
+export interface StoredSession {
+  clientId: number;
+  name: string;
   email: string;
+  role: Role;
   token: string;
   expiresAt: string;
-};
-
-// ============================================================================
-// HTTP AUTH INTERCEPTOR
-// ============================================================================
-
-@Injectable()
-export class AuthInterceptor implements HttpInterceptor {
-  private authService = inject(AuthService);
-
-  intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    const session = this.authService.session();
-    
-    if (session && req.url.includes('/api/v1')) {
-      // Clone request and add auth header
-      req = req.clone({
-        setHeaders: {
-          Authorization: `Bearer ${session.token}`,
-          'Content-Type': 'application/json',
-        }
-      });
-    }
-
-    return next.handle(req).pipe(
-      retry(1),
-      catchError((error: HttpErrorResponse) => {
-        let errorMessage = 'An error occurred';
-        
-        if (error.error instanceof ErrorEvent) {
-          errorMessage = `Error: ${error.error.message}`;
-        } else {
-          errorMessage = `Error Code: ${error.status}\nMessage: ${error.message}`;
-          
-          if (error.status === 401) {
-            this.authService.clearSession();
-          }
-        }
-        
-        console.error(errorMessage);
-        return throwError(() => new Error(errorMessage));
-      })
-    );
-  }
 }
 
-// ============================================================================
-// AUTH SERVICE
-// ============================================================================
+const SESSION_KEY = 'rocket-trading-session';
 
 @Injectable({ providedIn: 'root' })
-export class AuthService {
-  private readonly http = inject(HttpClient);
-  private readonly apiUrl = 'http://localhost:8081/api/v1';
-  private readonly sessionStorageKey = 'rocket-trading-session';
-  
-  private sessionState = signal<StoredSession | null>(this.readSession());
-  
-  readonly session = computed(() => this.sessionState());
-  readonly isSignedIn = computed(() => this.sessionState() !== null);
-  readonly clientId = computed(() => this.sessionState()?.clientId ?? null);
+export class SessionStore {
+  private readonly state = signal<StoredSession | null>(SessionStore.read());
 
-  register(request: RegisterClientRequest): Observable<ApiResponse<ClientRegistrationResponse>> {
-    return this.http.post<ApiResponse<ClientRegistrationResponse>>(
-      `${this.apiUrl}/auth/register`,
-      request
-    );
+  readonly session = this.state.asReadonly();
+  readonly role = computed(() => this.state()?.role ?? null);
+  readonly isStaff = computed(() => this.role() === 'ANALYST' || this.role() === 'OPERATIONS');
+
+  /** True while a session exists and has not expired (the server is still the authority). */
+  isActive(): boolean {
+    const session = this.state();
+    return session !== null && new Date(session.expiresAt).getTime() > Date.now();
   }
 
-  signIn(email: string): Observable<ApiResponse<SessionResponse>> {
-    return this.http.post<ApiResponse<SessionResponse>>(
-      `${this.apiUrl}/auth/sign-in`,
-      { email }
-    ).pipe(
-      tap((response) => {
-        if (response.data) {
-          this.writeSession({
-            clientId: response.data.clientId,
-            email,
-            token: response.data.accessToken,
-            expiresAt: response.data.expiresAt,
-          });
-        }
-      }),
-      catchError((error) => {
-        console.error('Sign-in failed:', error);
-        return throwError(() => error);
-      })
-    );
-  }
-
-  signOut(): Observable<any> {
-    const session = this.sessionState();
-    if (!session) {
-      return throwError(() => new Error('No session to sign out'));
-    }
-
-    return this.http.post(
-      `${this.apiUrl}/auth/sign-out`,
-      {},
-      { headers: this.authHeaders() }
-    ).pipe(
-      tap(() => this.clearSession()),
-      catchError((error) => {
-        this.clearSession();
-        return throwError(() => error);
-      })
-    );
-  }
-
-  updateProfile(profileData: { name: string; dateOfBirth: string; riskProfile: string }): Observable<ApiResponse<any>> {
-    return this.http.put<ApiResponse<any>>(
-      `${this.apiUrl}/auth/profile`,
-      profileData,
-      { headers: this.authHeaders() }
-    ).pipe(
-      catchError((error) => {
-        console.error('Profile update failed:', error);
-        return throwError(() => error);
-      })
-    );
-  }
-
-  clearSession(): void {
-    this.writeSession(null);
-  }
-
-  /** Re-read the session after another service (OAuthService) has written it to storage */
-  reloadSession(): void {
-    this.sessionState.set(this.readSession());
-  }
-
-  private readSession(): StoredSession | null {
+  set(session: StoredSession): void {
+    this.state.set(session);
     try {
-      const stored = sessionStorage.getItem(this.sessionStorageKey);
-      return stored ? JSON.parse(stored) : null;
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    } catch {
+      // Storage unavailable (private mode, SSR): the session lives for this page only
+    }
+  }
+
+  clear(): void {
+    this.state.set(null);
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+    } catch {
+      // nothing stored
+    }
+  }
+
+  /** Where a signed-in person starts, by role. */
+  homeRoute(): string {
+    switch (this.role()) {
+      case 'ANALYST':
+        return '/insights';
+      case 'OPERATIONS':
+        return '/ops';
+      default:
+        return '/dashboard';
+    }
+  }
+
+  private static read(): StoredSession | null {
+    try {
+      if (typeof sessionStorage === 'undefined') return null;
+      const stored = sessionStorage.getItem(SESSION_KEY);
+      const parsed = stored ? (JSON.parse(stored) as StoredSession) : null;
+      return parsed?.token && parsed.role ? parsed : null;
     } catch {
       return null;
     }
   }
-
-  private writeSession(session: StoredSession | null): void {
-    if (session) {
-      sessionStorage.setItem(this.sessionStorageKey, JSON.stringify(session));
-    } else {
-      sessionStorage.removeItem(this.sessionStorageKey);
-    }
-    this.sessionState.set(session);
-  }
-
-  protected authHeaders(): HttpHeaders {
-    const session = this.sessionState();
-    return new HttpHeaders({
-      'Authorization': `Bearer ${session?.token || ''}`,
-      'Content-Type': 'application/json',
-    });
-  }
 }
 
+/** Attaches the bearer token to API calls and ends the session when the server says it is no longer valid. */
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const sessions = inject(SessionStore);
+  const router = inject(Router);
+  const session = sessions.session();
+  const isApi = req.url.startsWith(API_BASE_URL);
+  const request = session && isApi
+    ? req.clone({ setHeaders: { Authorization: `Bearer ${session.token}` } })
+    : req;
+
+  return next(request).pipe(
+    catchError((error: HttpErrorResponse) => {
+      const isSignIn = req.url.includes('/auth/sign-in') || req.url.includes('/auth/register');
+      if (isApi && error.status === 401 && !isSignIn && session) {
+        sessions.clear();
+        router.navigate(['/login'], { queryParams: { expired: 1 } });
+      }
+      return throwError(() => error);
+    }),
+  );
+};
+
 // ============================================================================
-// PORTFOLIO SERVICE
+// API CLIENTS
 // ============================================================================
 
 @Injectable({ providedIn: 'root' })
-export class PortfolioService {
+export class AuthApi {
   private readonly http = inject(HttpClient);
-  private readonly authService = inject(AuthService);
-  private readonly apiUrl = 'http://localhost:8081/api/v1';
+  private readonly sessions = inject(SessionStore);
 
-  getPortfolioSummary(): Observable<ApiResponse<PortfolioSummaryResponse>> {
-    return this.http.get<ApiResponse<PortfolioSummaryResponse>>(
-      `${this.apiUrl}/portfolio/summary`,
-      { headers: this.authHeaders() }
+  providers(): Observable<{ password: boolean; github: boolean }> {
+    return this.http.get<ApiResponse<{ password: boolean; github: boolean }>>(`${API_BASE_URL}/auth/providers`).pipe(map((r) => r.data));
+  }
+
+  signIn(email: string, password: string): Observable<SessionResponse> {
+    return this.http
+      .post<ApiResponse<SessionResponse>>(`${API_BASE_URL}/auth/sign-in`, { email, password })
+      .pipe(map((r) => this.remember(r.data)));
+  }
+
+  register(request: RegisterRequest): Observable<unknown> {
+    return this.http.post(`${API_BASE_URL}/auth/register`, request);
+  }
+
+  /** Exchanges the one-time token from the GitHub redirect for this browser's session. */
+  completeOAuth(redirectToken: string): Observable<{ session: StoredSession; profileComplete: boolean }> {
+    return this.http
+      .post<ApiResponse<{ clientId: number; email: string; name: string; accessToken: string; expiresIn: number; role: Role; profileComplete?: boolean }>>(
+        `${API_BASE_URL}/auth/oauth/success`,
+        {},
+        { headers: { Authorization: `Bearer ${redirectToken}` } },
+      )
+      .pipe(
+        map((r) => {
+          const session: StoredSession = {
+            clientId: r.data.clientId,
+            name: r.data.name,
+            email: r.data.email,
+            role: r.data.role ?? 'CLIENT',
+            token: r.data.accessToken,
+            expiresAt: new Date(Date.now() + r.data.expiresIn * 1000).toISOString(),
+          };
+          this.sessions.set(session);
+          return { session, profileComplete: r.data.profileComplete ?? false };
+        }),
+      );
+  }
+
+  githubSignInUrl(): string {
+    return `${API_BASE_URL}/oauth2/authorization/github`;
+  }
+
+  updateProfile(profile: { name: string; dateOfBirth: string; riskProfile: string }): Observable<unknown> {
+    return this.http.put(`${API_BASE_URL}/auth/profile`, profile);
+  }
+
+  /** Revokes the session server-side; the local session is cleared whatever the outcome. */
+  signOut(): Observable<unknown> {
+    return this.http.post(`${API_BASE_URL}/auth/sign-out`, {}).pipe(
+      map((r) => {
+        this.sessions.clear();
+        return r;
+      }),
+      catchError((error) => {
+        this.sessions.clear();
+        return throwError(() => error);
+      }),
     );
   }
 
-  private authHeaders(): HttpHeaders {
-    const session = this.authService.session();
-    return new HttpHeaders({
-      'Authorization': `Bearer ${session?.token || ''}`,
-      'Content-Type': 'application/json',
+  private remember(response: SessionResponse): SessionResponse {
+    this.sessions.set({
+      clientId: response.clientId,
+      name: response.name,
+      email: response.email,
+      role: response.role,
+      token: response.accessToken,
+      expiresAt: response.expiresAt,
     });
+    return response;
   }
 }
 
-// ============================================================================
-// QUOTE SERVICE
-// ============================================================================
-
 @Injectable({ providedIn: 'root' })
-export class QuoteService {
+export class PortfolioApi {
   private readonly http = inject(HttpClient);
-  private readonly authService = inject(AuthService);
-  private readonly apiUrl = 'http://localhost:8081/api/v1';
-  // Not cached: prices move, and the backend already rejects stale quotes
-  getQuote(symbol: string): Observable<ApiResponse<QuoteResponse>> {
-    const normalized = symbol.trim().toUpperCase();
-    // Fauxnance crypto symbols look like X:BTC-USD
-    const market = normalized.startsWith('X:') ? 'crypto' : 'stock';
-    return this.http.get<ApiResponse<QuoteResponse>>(
-      `${this.apiUrl}/quotes/${encodeURIComponent(normalized)}`,
-      { headers: this.authHeaders(), params: { market } }
-    );
+
+  summary(): Observable<PortfolioSummary> {
+    return this.http.get<ApiResponse<PortfolioSummary>>(`${API_BASE_URL}/portfolio/summary`).pipe(map((r) => r.data));
   }
 
-  getSupportedInstruments(): Observable<ApiResponse<SupportedInstrument[]>> {
-    return this.http.get<ApiResponse<SupportedInstrument[]>>(
-      `${this.apiUrl}/instruments`,
-      { headers: this.authHeaders() }
-    );
-  }
-
-  private authHeaders(): HttpHeaders {
-    const session = this.authService.session();
-    return new HttpHeaders({
-      'Authorization': `Bearer ${session?.token || ''}`,
-      'Content-Type': 'application/json',
-    });
+  valuation(): Observable<PortfolioValuation> {
+    return this.http.get<ApiResponse<PortfolioValuation>>(`${API_BASE_URL}/portfolio/valuation`).pipe(map((r) => r.data));
   }
 }
 
-// ============================================================================
-// ORDER SERVICE
-// ============================================================================
+@Injectable({ providedIn: 'root' })
+export class MarketApi {
+  private readonly http = inject(HttpClient);
+
+  instruments(): Observable<Instrument[]> {
+    return this.http.get<ApiResponse<Instrument[]>>(`${API_BASE_URL}/instruments`).pipe(map((r) => r.data));
+  }
+
+  quote(symbol: string): Observable<Quote> {
+    return this.http.get<ApiResponse<Quote>>(`${API_BASE_URL}/quotes/${encodeURIComponent(symbol)}`).pipe(map((r) => r.data));
+  }
+
+  history(symbol: string, days = 30): Observable<Candle[]> {
+    return this.http
+      .get<ApiResponse<Candle[]>>(`${API_BASE_URL}/quotes/${encodeURIComponent(symbol)}/history`, { params: { days } })
+      .pipe(map((r) => r.data));
+  }
+
+  indicative(symbol: string, side: Side, quantity: number): Observable<IndicativePrice> {
+    return this.http
+      .get<ApiResponse<IndicativePrice>>(`${API_BASE_URL}/quotes/${encodeURIComponent(symbol)}/indicative`, {
+        params: { side, quantity },
+      })
+      .pipe(map((r) => r.data));
+  }
+}
 
 @Injectable({ providedIn: 'root' })
-export class OrderService {
+export class OrderApi {
   private readonly http = inject(HttpClient);
-  private readonly authService = inject(AuthService);
-  private readonly apiUrl = 'http://localhost:8081/api/v1';
 
-  submitOrder(request: SubmitOrderRequest, idempotencyKey?: string): Observable<ApiResponse<OrderResponse>> {
-    let headers = this.authHeaders();
-    if (idempotencyKey) {
-      headers = headers.set('Idempotency-Key', idempotencyKey);
-    }
-
-    return this.http.post<ApiResponse<OrderResponse>>(
-      `${this.apiUrl}/orders`,
-      request,
-      { headers }
-    );
+  /** The idempotency key makes a retried submission return the same order instead of placing a second. */
+  submit(request: SubmitOrderRequest, idempotencyKey: string): Observable<Order> {
+    return this.http
+      .post<ApiResponse<Order>>(`${API_BASE_URL}/orders`, request, { headers: { 'Idempotency-Key': idempotencyKey } })
+      .pipe(map((r) => r.data));
   }
 
-  listOrders(): Observable<ApiResponse<OrderResponse[]>> {
-    return this.http.get<ApiResponse<OrderResponse[]>>(
-      `${this.apiUrl}/orders`,
-      { headers: this.authHeaders() }
-    );
+  list(): Observable<Order[]> {
+    return this.http.get<ApiResponse<Order[]>>(`${API_BASE_URL}/orders`).pipe(map((r) => r.data));
   }
 
-  getOrder(orderId: number): Observable<ApiResponse<OrderResponse>> {
-    return this.http.get<ApiResponse<OrderResponse>>(
-      `${this.apiUrl}/orders/${orderId}`,
-      { headers: this.authHeaders() }
-    );
+  get(orderId: number): Observable<Order> {
+    return this.http.get<ApiResponse<Order>>(`${API_BASE_URL}/orders/${orderId}`).pipe(map((r) => r.data));
   }
 
-  listFills(orderId: number): Observable<ApiResponse<FillResponse[]>> {
-    return this.http.get<ApiResponse<FillResponse[]>>(
-      `${this.apiUrl}/fills/${orderId}`,
-      { headers: this.authHeaders() }
-    );
+  fills(orderId: number): Observable<Fill[]> {
+    return this.http.get<ApiResponse<Fill[]>>(`${API_BASE_URL}/fills/${orderId}`).pipe(map((r) => r.data));
   }
 
-  getOrderTimeline(orderId: number): Observable<ApiResponse<OrderTimelineResponse>> {
-    return this.http.get<ApiResponse<OrderTimelineResponse>>(
-      `${this.apiUrl}/orders/${orderId}/timeline`,
-      { headers: this.authHeaders() }
-    );
+  timeline(orderId: number): Observable<OrderTimeline> {
+    return this.http.get<ApiResponse<OrderTimeline>>(`${API_BASE_URL}/orders/${orderId}/timeline`).pipe(map((r) => r.data));
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class WatchlistApi {
+  private readonly http = inject(HttpClient);
+
+  list(): Observable<WatchlistItem[]> {
+    return this.http.get<ApiResponse<WatchlistItem[]>>(`${API_BASE_URL}/watchlist`).pipe(map((r) => r.data));
   }
 
-  private authHeaders(): HttpHeaders {
-    const session = this.authService.session();
-    return new HttpHeaders({
-      'Authorization': `Bearer ${session?.token || ''}`,
-      'Content-Type': 'application/json',
-    });
+  add(symbol: string): Observable<WatchlistItem[]> {
+    return this.http
+      .put<ApiResponse<WatchlistItem[]>>(`${API_BASE_URL}/watchlist/${encodeURIComponent(symbol)}`, {})
+      .pipe(map((r) => r.data));
+  }
+
+  remove(symbol: string): Observable<WatchlistItem[]> {
+    return this.http
+      .delete<ApiResponse<WatchlistItem[]>>(`${API_BASE_URL}/watchlist/${encodeURIComponent(symbol)}`)
+      .pipe(map((r) => r.data));
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class ReportingApi {
+  private readonly http = inject(HttpClient);
+
+  overview(from: Date, to: Date): Observable<ReportingOverview> {
+    return this.get<ReportingOverview>('overview', from, to);
+  }
+
+  instruments(from: Date, to: Date): Observable<InstrumentActivity[]> {
+    return this.get<InstrumentActivity[]>('instruments', from, to);
+  }
+
+  clientSegments(from: Date, to: Date): Observable<ClientSegmentActivity[]> {
+    return this.get<ClientSegmentActivity[]>('segments', from, to);
+  }
+
+  markets(from: Date, to: Date): Observable<MarketActivity[]> {
+    return this.get<MarketActivity[]>('markets', from, to);
+  }
+
+  volume(from: Date, to: Date, bucket: 'day' | 'week'): Observable<VolumeBucket[]> {
+    return this.get<VolumeBucket[]>('volume', from, to, { bucket });
+  }
+
+  private get<T>(path: string, from: Date, to: Date, extra: Record<string, string> = {}): Observable<T> {
+    const params = new HttpParams({ fromObject: { from: from.toISOString(), to: to.toISOString(), ...extra } });
+    return this.http.get<ApiResponse<T>>(`${API_BASE_URL}/reporting/${path}`, { params }).pipe(map((r) => r.data));
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class OpsApi {
+  private readonly http = inject(HttpClient);
+
+  search(query: string, status: string): Observable<OpsOrderSummary[]> {
+    const params: Record<string, string> = {};
+    if (query.trim()) params['q'] = query.trim();
+    if (status) params['status'] = status;
+    return this.http.get<ApiResponse<OpsOrderSummary[]>>(`${API_BASE_URL}/ops/orders`, { params }).pipe(map((r) => r.data));
+  }
+
+  trace(orderId: number): Observable<OrderTrace> {
+    return this.http.get<ApiResponse<OrderTrace>>(`${API_BASE_URL}/ops/orders/${orderId}`).pipe(map((r) => r.data));
   }
 }

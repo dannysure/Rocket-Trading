@@ -1,305 +1,178 @@
-import { Component, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { Router, RouterLink } from '@angular/router';
-import { OAuthService } from './oauth.service';
+import { Component, OnInit, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
+import { switchMap } from 'rxjs';
+import { AuthApi, SessionStore, errorMessage } from './api.service';
+import { BrandMarkComponent } from './brand-mark.component';
+
+type Mode = 'signin' | 'create';
 
 @Component({
   selector: 'app-login',
-  standalone: true,
-  imports: [CommonModule],
+  imports: [FormsModule, BrandMarkComponent],
   template: `
-    <div class="login-container">
-      <div class="login-card">
-        <div class="logo-section">
-          <h1>🚀 Rocket Trading</h1>
-          <p class="subtitle">Advanced Trading Platform</p>
+    <div class="split">
+      <aside class="brand-panel">
+        <svg class="rings" aria-hidden="true" width="560" height="560" viewBox="0 0 560 560">
+          <circle cx="280" cy="280" r="279" fill="none" stroke="#3E6BFF" />
+          <circle cx="280" cy="280" r="205" fill="none" stroke="#3E6BFF" />
+          <circle cx="280" cy="280" r="130" fill="none" stroke="#3E6BFF" />
+        </svg>
+        <div class="logo"><app-brand-mark /> <span>Rocket Trading</span></div>
+        <div class="pitch">
+          <app-brand-mark [size]="76" color="#3E6BFF" />
+          <h1>Investing, cleared for launch.</h1>
+          <p>See your positions, place a trade and watch it land in your portfolio — no call back required.</p>
         </div>
+        <p class="legal">© 2026 Rocket Trading · Built by Team Rocket</p>
+      </aside>
 
-        <div class="login-section">
-          <h2>Sign In to Your Account</h2>
-          <p class="description">Choose your preferred authentication method</p>
-
-          <div class="oauth-providers">
-            <button
-              *ngFor="let provider of oauthProviders"
-              class="provider-button"
-              [style.border-color]="provider.color"
-              (click)="loginWithProvider(provider.id)"
-              [attr.aria-label]="'Sign in with ' + provider.name"
-            >
-              <span class="provider-icon">{{ provider.icon }}</span>
-              <span class="provider-name">Sign in with {{ provider.name }}</span>
-            </button>
+      <main class="form-panel">
+        <div class="form-box">
+          <div class="mode-switch" role="tablist" aria-label="Sign in or create an account">
+            <button type="button" role="tab" [attr.aria-selected]="mode() === 'signin'" [class.active]="mode() === 'signin'" (click)="setMode('signin')">Sign in</button>
+            <button type="button" role="tab" [attr.aria-selected]="mode() === 'create'" [class.active]="mode() === 'create'" (click)="setMode('create')">Create account</button>
           </div>
 
-          <div class="divider">
-            <span>New to Rocket Trading?</span>
-          </div>
+          @if (notice()) { <p class="alert info" role="status">{{ notice() }}</p> }
+          @if (error()) { <p class="alert error" role="alert">{{ error() }}</p> }
 
-          <p class="signup-text">
-            Sign up is automatic when you authenticate with any provider above.
-            We never store passwords—authentication is handled securely by your provider.
-          </p>
+          @if (mode() === 'signin') {
+            <h2>Welcome back</h2>
+            <p class="lede">Sign in to see your portfolio.</p>
+            <form (ngSubmit)="signIn()">
+              <div class="field">
+                <label for="si-email">Email</label>
+                <input id="si-email" class="input" type="email" name="email" autocomplete="email" required [(ngModel)]="email" />
+              </div>
+              <div class="field">
+                <label for="si-pass">Password</label>
+                <input id="si-pass" class="input" type="password" name="password" autocomplete="current-password" required [(ngModel)]="password" />
+              </div>
+              <button type="submit" class="btn btn-primary btn-block" [disabled]="busy()">{{ busy() ? 'Signing in…' : 'Sign in' }}</button>
+            </form>
+          } @else {
+            <h2>Create your account</h2>
+            <p class="lede">Open a Rocket Trading account in under a minute.</p>
+            <form (ngSubmit)="create()">
+              <div class="field">
+                <label for="ca-name">Full name</label>
+                <input id="ca-name" class="input" type="text" name="name" autocomplete="name" required [(ngModel)]="name" />
+              </div>
+              <div class="field">
+                <label for="ca-email">Email</label>
+                <input id="ca-email" class="input" type="email" name="email" autocomplete="email" required [(ngModel)]="email" />
+              </div>
+              <div class="field">
+                <label for="ca-pass">Password</label>
+                <input id="ca-pass" class="input" type="password" name="password" autocomplete="new-password" minlength="8" required [(ngModel)]="password" aria-describedby="pass-hint" />
+                <span id="pass-hint" class="hint">At least 8 characters.</span>
+              </div>
+              <button type="submit" class="btn btn-primary btn-block" [disabled]="busy()">{{ busy() ? 'Creating account…' : 'Create account' }}</button>
+            </form>
+            <p class="small">Your account opens with $10,000 of practice cash. By continuing you agree to the Client Agreement and Risk Disclosure.</p>
+          }
+
+          @if (githubEnabled()) {
+            <div class="divider"><span>or</span></div>
+            <a class="btn btn-outline btn-block" [href]="githubUrl">
+              <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+              Continue with GitHub
+            </a>
+          }
         </div>
-
-        <div class="features-section">
-          <h3>Why Rocket Trading?</h3>
-          <ul class="features-list">
-            <li>✅ Secure OAuth authentication (no passwords to manage)</li>
-            <li>✅ Real-time portfolio tracking</li>
-            <li>✅ Advanced order management</li>
-            <li>✅ Professional trading tools</li>
-            <li>✅ 24/7 market access</li>
-          </ul>
-        </div>
-
-        <div class="footer-section">
-          <p class="footer-text">
-            <a href="#">Privacy Policy</a> • 
-            <a href="#">Terms of Service</a> • 
-            <a href="#">Contact Support</a>
-          </p>
-        </div>
-      </div>
-
-      <div class="demo-section">
-        <h3>Demo Credentials Available</h3>
-        <p>Use any OAuth provider to create an account instantly with demo data</p>
-      </div>
+      </main>
     </div>
   `,
   styles: [`
-    .login-container {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    .split { min-height: 100vh; display: flex; flex-wrap: wrap; }
+    .brand-panel {
+      flex: 1 1 420px; background: var(--navy-900); color: #fff; padding: 56px; display: flex; flex-direction: column;
+      justify-content: space-between; gap: 40px; position: relative; overflow: hidden;
     }
-
-    .login-card {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      padding: 40px;
-      width: 100%;
-      max-width: 450px;
-      animation: slideIn 0.3s ease-out;
+    .rings { position: absolute; right: -180px; bottom: -200px; opacity: .16; }
+    .logo { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 19px; position: relative; }
+    .pitch { position: relative; max-width: 400px; }
+    .pitch h1 { font-size: 34px; line-height: 1.25; margin-top: 24px; }
+    .pitch p { font-size: 15px; line-height: 1.6; color: #c3cce4; margin: 16px 0 0; }
+    .legal { position: relative; font-size: 12px; color: #a3aecb; margin: 0; }
+    .form-panel { flex: 999 1 480px; display: flex; align-items: center; justify-content: center; padding: 48px 24px; }
+    .form-box { width: 100%; max-width: 380px; }
+    .mode-switch { display: flex; gap: 4px; background: var(--surface-alt); border-radius: 10px; padding: 4px; margin-bottom: 28px; }
+    .mode-switch button {
+      flex: 1; padding: 10px 0; border-radius: 8px; border: none; font-weight: 600; font-size: 14px; cursor: pointer;
+      background: transparent; color: var(--text-muted); min-height: 40px;
     }
-
-    @keyframes slideIn {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .logo-section {
-      text-align: center;
-      margin-bottom: 40px;
-    }
-
-    .logo-section h1 {
-      font-size: 32px;
-      margin: 0;
-      color: #333;
-    }
-
-    .subtitle {
-      color: #666;
-      margin: 8px 0 0 0;
-      font-size: 14px;
-    }
-
-    .login-section {
-      margin-bottom: 40px;
-    }
-
-    .login-section h2 {
-      font-size: 24px;
-      margin: 0 0 8px 0;
-      color: #333;
-    }
-
-    .description {
-      color: #666;
-      font-size: 14px;
-      margin: 0 0 24px 0;
-    }
-
-    .oauth-providers {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-bottom: 24px;
-    }
-
-    .provider-button {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 16px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      background: white;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: 500;
-      transition: all 0.2s ease;
-    }
-
-    .provider-button:hover {
-      background: #f5f5f5;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    }
-
-    .provider-icon {
-      font-size: 20px;
-    }
-
-    .provider-name {
-      flex: 1;
-      text-align: left;
-      color: #333;
-    }
-
-    .divider {
-      text-align: center;
-      margin: 24px 0;
-      position: relative;
-    }
-
-    .divider span {
-      background: white;
-      padding: 0 12px;
-      color: #999;
-      font-size: 13px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .divider::before {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: #e0e0e0;
-    }
-
-    .signup-text {
-      color: #666;
-      font-size: 13px;
-      margin: 0;
-      line-height: 1.5;
-    }
-
-    .features-section {
-      margin-top: 32px;
-      padding-top: 24px;
-      border-top: 1px solid #e0e0e0;
-    }
-
-    .features-section h3 {
-      font-size: 14px;
-      color: #333;
-      margin: 0 0 12px 0;
-      font-weight: 600;
-    }
-
-    .features-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
-    .features-list li {
-      color: #666;
-      font-size: 13px;
-      margin: 8px 0;
-      line-height: 1.4;
-    }
-
-    .footer-section {
-      margin-top: 24px;
-      text-align: center;
-    }
-
-    .footer-text {
-      color: #999;
-      font-size: 12px;
-      margin: 0;
-    }
-
-    .footer-text a {
-      color: #667eea;
-      text-decoration: none;
-    }
-
-    .footer-text a:hover {
-      text-decoration: underline;
-    }
-
-    .demo-section {
-      position: absolute;
-      bottom: 40px;
-      left: 40px;
-      color: white;
-      font-size: 12px;
-    }
-
-    .demo-section h3 {
-      margin: 0 0 4px 0;
-      font-size: 12px;
-    }
-
-    .demo-section p {
-      margin: 0;
-    }
-
-    @media (max-width: 600px) {
-      .login-container {
-        padding: 20px;
-      }
-
-      .login-card {
-        padding: 24px;
-      }
-
-      .logo-section h1 {
-        font-size: 24px;
-      }
-
-      .demo-section {
-        position: static;
-        margin-top: 24px;
-        padding-top: 24px;
-        border-top: 1px solid rgba(255, 255, 255, 0.2);
-      }
-    }
-  `]
+    .mode-switch button.active { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(16,24,48,.08); }
+    h2 { font-size: 22px; }
+    .lede { color: var(--text-muted); font-size: 14px; margin: 6px 0 24px; }
+    .small { font-size: 12px; color: var(--text-muted); margin-top: 20px; text-align: center; line-height: 1.5; }
+    .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; color: var(--text-muted); font-size: 13px; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    @media (max-width: 700px) { .brand-panel { padding: 32px 24px; } .pitch h1 { font-size: 26px; } }
+  `],
 })
-export class LoginComponent {
-  private oauthService = inject(OAuthService);
-  private router = inject(Router);
+export class LoginComponent implements OnInit {
+  private readonly auth = inject(AuthApi);
+  private readonly sessions = inject(SessionStore);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
-  oauthProviders = this.oauthService.oauthProviders;
+  protected readonly mode = signal<Mode>('signin');
+  protected readonly busy = signal(false);
+  protected readonly error = signal('');
+  protected readonly notice = signal('');
+  protected readonly githubEnabled = signal(false);
+  protected readonly githubUrl = this.auth.githubSignInUrl();
 
-  ngOnInit() {
-    // Redirect if already signed in
-    if (this.oauthService.isSignedIn()) {
-      this.router.navigate(['/dashboard']);
+  protected name = '';
+  protected email = '';
+  protected password = '';
+
+  ngOnInit(): void {
+    if (this.route.snapshot.queryParamMap.get('expired')) {
+      this.notice.set('Your session ended. Please sign in again.');
     }
+    this.auth.providers().subscribe({ next: (p) => this.githubEnabled.set(p.github), error: () => this.githubEnabled.set(false) });
   }
 
-  loginWithProvider(provider: string) {
-    this.oauthService.initiateOAuthLogin(provider);
+  setMode(mode: Mode): void {
+    this.mode.set(mode);
+    this.error.set('');
+  }
+
+  signIn(): void {
+    if (!this.email || !this.password) {
+      this.error.set('Enter your email and password.');
+      return;
+    }
+    this.run(this.auth.signIn(this.email.trim(), this.password));
+  }
+
+  create(): void {
+    if (!this.name.trim() || !this.email.trim() || this.password.length < 8) {
+      this.error.set('Enter your name, email and a password of at least 8 characters.');
+      return;
+    }
+    const email = this.email.trim();
+    this.run(this.auth.register({ name: this.name.trim(), email, password: this.password })
+      .pipe(switchMap(() => this.auth.signIn(email, this.password))));
+  }
+
+  private run(request: ReturnType<AuthApi['signIn']>): void {
+    this.busy.set(true);
+    this.error.set('');
+    this.notice.set('');
+    request.subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.password = '';
+        this.router.navigateByUrl(this.sessions.homeRoute());
+      },
+      error: (e) => {
+        this.busy.set(false);
+        this.error.set(errorMessage(e, 'Sign-in failed. Please try again.'));
+      },
+    });
   }
 }

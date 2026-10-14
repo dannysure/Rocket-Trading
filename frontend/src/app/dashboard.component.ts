@@ -1,618 +1,260 @@
-import { ChangeDetectorRef, Component, inject, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
-import { PortfolioService, OrderService, QuoteService, PortfolioSummaryResponse, OrderResponse, QuoteResponse, Position } from './api.service';
-import { AuthService } from './api.service';
-import { OAuthService } from './oauth.service';
-import { Subscription, finalize, switchMap, take, takeWhile, timer } from 'rxjs';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { forkJoin, interval, of, catchError } from 'rxjs';
+import {
+  Instrument, MarketApi, Order, OrderApi, PortfolioApi, PortfolioValuation, Quote, WatchlistApi, WatchlistItem, errorMessage,
+} from './api.service';
+import { NavHeaderComponent } from './nav-header.component';
+import { TradeTicketComponent } from './trade-ticket.component';
+import { InstrumentSearchComponent } from './instrument-search.component';
+import {
+  displaySymbol, isOpen, money, orderStatus, percent, price, quantity, segmentLabel, signedMoney, trendClass,
+} from './format';
 
 @Component({
   selector: 'app-dashboard',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [RouterLink, NavHeaderComponent, TradeTicketComponent, InstrumentSearchComponent],
   template: `
-    <div class="dashboard">
-      <header class="header">
-        <h1>Rocket Trading Dashboard</h1>
-        <div class="user-info">
-          <span>{{ session?.email }}</span>
-          <button (click)="onSignOut()" class="button button-small">Sign Out</button>
-        </div>
-      </header>
+    <app-nav-header [cash]="valuation()?.cashBalance ?? null" [currency]="currency()" />
 
-      <div class="content">
-        <div class="section">
-          <h2>Portfolio Summary</h2>
-          <div *ngIf="loading.portfolio" class="loading">Loading portfolio...</div>
-          <div *ngIf="!loading.portfolio && portfolio" class="portfolio-card">
-            <div class="portfolio-stat">
-              <span class="label">Cash Balance</span>
-              <span class="value">{{ portfolio.currency }} {{ portfolio.cashBalance | number:'1.2-2' }}</span>
-            </div>
-            <div class="portfolio-stat">
-              <span class="label">Positions</span>
-              <span class="value">{{ portfolio.positions.length }}</span>
-            </div>
-          </div>
+    <main class="page">
+      @if (loadError()) { <p class="alert error" role="alert">{{ loadError() }}</p> }
 
-          <h3>Holdings</h3>
-          <div *ngIf="!loading.portfolio && portfolio && portfolio.positions.length > 0" class="positions">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th>Quantity</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let position of portfolio.positions">
-                  <td>{{ position.symbol }}</td>
-                  <td>{{ position.quantity | number:'1.6-6' }}</td>
-                  <td><button type="button" class="button button-small" (click)="onSellPosition(position)">Sell</button></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div *ngIf="!loading.portfolio && portfolio && portfolio.positions.length === 0">
-            <p class="info">No positions yet. Place an order to get started!</p>
-          </div>
-        </div>
-
-        <div class="section">
-          <h2>Place Order</h2>
-          <form (ngSubmit)="onPlaceOrder()" class="order-form">
-            <div class="form-row">
-              <div class="form-group">
-                <label for="symbol">Symbol</label>
-                <input
-                  id="symbol"
-                  type="text"
-                  [(ngModel)]="orderForm.symbol"
-                  name="symbol"
-                  class="input"
-                  (blur)="getQuote()"
-                  placeholder="e.g., AAPL, SPY, X:BTC-USD"
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="side">Side</label>
-                <select [(ngModel)]="orderForm.side" name="side" class="input">
-                  <option value="BUY">BUY</option>
-                  <option value="SELL">SELL</option>
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label for="quantity">Quantity</label>
-                <input
-                  id="quantity"
-                  type="number"
-                  [(ngModel)]="orderForm.quantity"
-                  name="quantity"
-                  class="input"
-                  step="0.01"
-                />
-              </div>
-            </div>
-
-            <div *ngIf="currentQuote" class="quote-info">
-              <p>
-                <strong>{{ orderForm.symbol }}</strong> - Bid: {{ currentQuote.bid }}, Ask: {{ currentQuote.ask }}
-                <span class="quote-time">as of {{ currentQuote.capturedAt | date:'shortTime' }}</span>
-                <span *ngIf="currentQuote.delayed" class="delayed-badge">Delayed price</span>
+      <section class="card hero">
+        <div class="hero-row">
+          <div>
+            <p class="label">Portfolio value</p>
+            @if (valuation(); as v) {
+              <p class="num hero-value">{{ fmt.money(v.totalValue, v.currency) }}</p>
+              <p class="num change {{ fmt.trendClass(v.dayChange) }}">
+                {{ fmt.signedMoney(v.dayChange, v.currency) }} <span class="muted">today</span>
               </p>
-              <p>
-                Estimated {{ orderForm.side === 'BUY' ? 'cost' : 'proceeds' }}:
-                {{ (orderForm.side === 'BUY' ? currentQuote.ask : currentQuote.bid) * orderForm.quantity | number:'1.2-2' }}
-              </p>
-            </div>
-
-            <button type="submit" class="button button-primary" [disabled]="loading.order">
-              {{ loading.order ? 'Placing Order...' : 'Place Order' }}
-            </button>
-          </form>
-
-          <div *ngIf="orderError" class="error-message">
-            {{ orderError }}
+              @if (!v.complete) { <p class="hint">Some holdings could not be priced just now and are left out of this total.</p> }
+            } @else {
+              <p class="skeleton">Loading your portfolio…</p>
+            }
           </div>
-          <div *ngIf="orderSuccess" class="success-message">
-            Order placed successfully!
-          </div>
+          <button type="button" class="btn btn-primary" (click)="openTrade(defaultSymbol())">Trade</button>
         </div>
+      </section>
 
-        <div class="section">
-          <h2>Recent Orders</h2>
-          <div *ngIf="loading.orders" class="loading">Loading orders...</div>
-          <div *ngIf="!loading.orders && orders.length > 0" class="orders">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Order ID</th>
-                  <th>Symbol</th>
-                  <th>Side</th>
-                  <th>Quantity</th>
-                  <th>Status</th>
-                  <th>Reason</th>
-                  <th>Submitted</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let order of orders">
-                  <td>{{ order.orderId }}</td>
-                  <td>{{ order.symbol }}</td>
-                  <td>{{ order.side }}</td>
-                  <td>{{ order.quantity | number:'1.6-6' }}</td>
-                  <td><span class="status" [ngClass]="order.status.toLowerCase()">{{ order.status }}</span></td>
-                  <td>{{ order.rejectionReason }}</td>
-                  <td>{{ order.submittedAt | date:'short' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div *ngIf="!loading.orders && orders.length === 0">
-            <p class="info">No orders yet.</p>
-          </div>
+      <div class="stat-row">
+        <div class="card">
+          <p class="label">Cash balance</p>
+          <p class="num stat-value">{{ fmt.money(valuation()?.cashBalance, currency()) }}</p>
+          <p class="hint">Available to trade now</p>
+        </div>
+        <div class="card">
+          <p class="label">Total return</p>
+          <p class="num stat-value {{ fmt.trendClass(valuation()?.totalReturn) }}">{{ fmt.signedMoney(valuation()?.totalReturn, currency()) }}</p>
+          <p class="hint">Against the {{ fmt.money(valuation()?.netDeposits, currency()) }} you've put in</p>
+        </div>
+        <div class="card">
+          <p class="label">Open orders</p>
+          <p class="num stat-value">{{ openOrders().length }}</p>
+          <a routerLink="/blotter" class="link">View blotter →</a>
         </div>
       </div>
-    </div>
+
+      <section class="card flush">
+        <div class="card-head"><h2>Holdings</h2></div>
+        @if (!valuation()) {
+          <p class="empty">Loading holdings…</p>
+        } @else if (valuation()!.positions.length === 0) {
+          <p class="empty">You don't hold anything yet. <a routerLink="/trade" class="link">Browse markets</a> to place your first trade.</p>
+        } @else {
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr><th>Instrument</th><th class="right">Qty</th><th class="right">Avg cost</th><th class="right">Price</th><th class="right">Market value</th><th class="right">Return</th><th class="right">Today</th><th></th></tr></thead>
+              <tbody>
+                @for (h of valuation()!.positions; track h.symbol) {
+                  <tr>
+                    <td><div class="instrument-cell"><span class="symbol">{{ fmt.displaySymbol(h.symbol) }}</span><span class="sub">{{ h.name }} · {{ fmt.segmentLabel(h.segment) }}</span></div></td>
+                    <td class="num right">{{ fmt.quantity(h.quantity) }}</td>
+                    <td class="num right">{{ fmt.money(h.averageCost, currency()) }}</td>
+                    <td class="num right">{{ h.priced ? fmt.price(h.price, h.instrumentCurrency) : 'Unavailable' }}</td>
+                    <td class="num right bold">{{ fmt.money(h.marketValue, currency()) }}</td>
+                    <td class="num right {{ fmt.trendClass(h.unrealizedReturn) }}">{{ fmt.signedMoney(h.unrealizedReturn, currency()) }}</td>
+                    <td class="num right {{ fmt.trendClass(h.changePercent) }}">{{ fmt.percent(h.changePercent) }}</td>
+                    <td class="right"><button type="button" class="link" (click)="openTrade(h.symbol)">Trade<span class="sr-only"> {{ h.symbol }}</span></button></td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+
+      <div class="two-col">
+        <section class="card flush">
+          <div class="card-head"><h2>Watchlist</h2><a routerLink="/trade" class="link">Add from markets →</a></div>
+          @if (watchlist().length === 0) {
+            <p class="empty">Follow instruments you're interested in. Tap the star on any instrument in Markets.</p>
+          } @else {
+            <div class="table-wrap">
+              <table class="data">
+                <tbody>
+                  @for (w of watchlist(); track w.instrument.symbol) {
+                    <tr>
+                      <td><div class="instrument-cell"><span class="symbol">{{ fmt.displaySymbol(w.instrument.symbol) }}</span><span class="sub">{{ w.instrument.name }}</span></div></td>
+                      <td class="num right">{{ quoteText(w.instrument) }}</td>
+                      <td class="num right {{ fmt.trendClass(watchQuotes()[w.instrument.symbol]?.changePercent) }}">{{ fmt.percent(watchQuotes()[w.instrument.symbol]?.changePercent) }}</td>
+                      <td class="right"><button type="button" class="link" (click)="openTrade(w.instrument.symbol)">Trade<span class="sr-only"> {{ w.instrument.symbol }}</span></button></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
+
+        <section class="card flush">
+          <div class="card-head"><h2>Recent activity</h2><a routerLink="/blotter" class="link">View all →</a></div>
+          @if (orders().length === 0) {
+            <p class="empty">No orders yet.</p>
+          } @else {
+            <div class="table-wrap">
+              <table class="data">
+                <tbody>
+                  @for (o of orders().slice(0, 5); track o.orderId) {
+                    <tr>
+                      <td><div class="instrument-cell"><span class="symbol">{{ fmt.displaySymbol(o.symbol) }}</span><span class="sub side" [class.buy]="o.side === 'BUY'" [class.sell]="o.side === 'SELL'">{{ o.side === 'BUY' ? 'Buy' : 'Sell' }} {{ fmt.quantity(o.quantity) }}</span></div></td>
+                      <td class="num right">{{ fmt.money(o.settlementAmount, o.settlementCurrency) }}</td>
+                      <td class="right"><span class="badge {{ fmt.orderStatus(o).cls }}">{{ fmt.orderStatus(o).label }}</span></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
+      </div>
+    </main>
+
+    @if (tradeInstrument(); as instrument) {
+      <div class="overlay" (click)="closeTrade()" aria-hidden="true"></div>
+      <div class="sheet" role="dialog" aria-modal="true" [attr.aria-label]="'Trade ' + instrument.symbol" (keydown.escape)="closeTrade()">
+        <div class="sheet-head">
+          <div>
+            <p class="sheet-eyebrow">{{ fmt.segmentLabel(instrument.segment) }}</p>
+            <h2>{{ fmt.displaySymbol(instrument.symbol) }} <span class="muted name">{{ instrument.name }}</span></h2>
+          </div>
+          <button type="button" class="close" (click)="closeTrade()" aria-label="Close">✕</button>
+        </div>
+        <div class="picker">
+          <app-instrument-search label="Trade something else" [instruments]="instruments()"
+                                 (picked)="tradeInstrument.set($event)" (catalogueChanged)="instruments.set($event)" />
+        </div>
+        <div class="sheet-body">
+          <app-trade-ticket [instrument]="instrument" (settled)="refresh()" />
+        </div>
+      </div>
+    }
   `,
   styles: [`
-    .dashboard {
-      min-height: 100vh;
-      background: #f5f5f5;
+    .hero { padding: 32px; }
+    .hero-row { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+    .hero-value { font-size: 40px; font-weight: 700; font-family: var(--font-display); margin: 0; }
+    .change { font-size: 14px; font-weight: 600; margin: 8px 0 0; }
+    .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 24px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .overlay { position: fixed; inset: 0; background: rgba(11, 21, 48, .45); z-index: 40; }
+    .sheet {
+      position: fixed; z-index: 41; left: 50%; bottom: 0; transform: translateX(-50%); width: min(560px, 100%);
+      max-height: 90vh; overflow-y: auto; background: var(--surface); border-radius: 24px 24px 0 0;
+      box-shadow: 0 -24px 60px rgba(11,21,48,.35);
     }
-
-    .header {
-      background: #333;
-      color: white;
-      padding: 1.5rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .user-info {
-      display: flex;
-      gap: 1rem;
-      align-items: center;
-    }
-
-    .button-small {
-      padding: 0.5rem 1rem;
-      background: #667eea;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    .button-small:hover {
-      background: #5568d3;
-    }
-
-    .content {
-      padding: 2rem;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    .section {
-      background: white;
-      padding: 1.5rem;
-      border-radius: 8px;
-      margin-bottom: 2rem;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    h2 {
-      margin-top: 0;
-      color: #333;
-      border-bottom: 2px solid #667eea;
-      padding-bottom: 0.5rem;
-    }
-
-    h3 {
-      color: #555;
-      margin-top: 1.5rem;
-    }
-
-    .portfolio-card {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .portfolio-stat {
-      padding: 1rem;
-      background: #f9f9f9;
-      border-radius: 4px;
-      border-left: 4px solid #667eea;
-    }
-
-    .label {
-      display: block;
-      font-size: 0.9rem;
-      color: #999;
-      margin-bottom: 0.5rem;
-    }
-
-    .value {
-      display: block;
-      font-size: 1.3rem;
-      font-weight: bold;
-      color: #333;
-    }
-
-    .quote-time {
-      color: #666;
-      font-size: 0.85rem;
-      margin-left: 0.5rem;
-    }
-
-    .delayed-badge {
-      background: #fff3cd;
-      color: #856404;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      margin-left: 0.5rem;
-      padding: 0.15rem 0.5rem;
-    }
-
-    .table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 1rem;
-    }
-
-    thead {
-      background: #f5f5f5;
-    }
-
-    th {
-      padding: 0.75rem;
-      text-align: left;
-      font-weight: 600;
-      color: #333;
-    }
-
-    td {
-      padding: 0.75rem;
-      border-bottom: 1px solid #eee;
-      color: #333;
-    }
-
-    tr:hover {
-      background: #f9f9f9;
-    }
-
-    .status {
-      padding: 0.25rem 0.75rem;
-      border-radius: 12px;
-      font-size: 0.85rem;
-      font-weight: 600;
-    }
-
-    .status.submitted {
-      background: #fff3cd;
-      color: #856404;
-    }
-
-    .status.accepted {
-      background: #d1ecf1;
-      color: #0c5460;
-    }
-
-    .status.filled {
-      background: #d4edda;
-      color: #155724;
-    }
-
-    .status.rejected {
-      background: #f8d7da;
-      color: #721c24;
-    }
-
-    .order-form {
-      background: #f9f9f9;
-      padding: 1rem;
-      border-radius: 4px;
-      margin: 1rem 0;
-    }
-
-    .form-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1rem;
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-    }
-
-    label {
-      font-weight: 500;
-      margin-bottom: 0.5rem;
-      color: #333;
-    }
-
-    .input {
-      padding: 0.75rem;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 1rem;
-    }
-
-    .input:focus {
-      outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-
-    .quote-info {
-      background: #e8f4f8;
-      padding: 0.75rem;
-      border-radius: 4px;
-      margin-bottom: 1rem;
-      color: #0c5460;
-    }
-
-    .button {
-      padding: 0.75rem 1.5rem;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: 500;
-    }
-
-    .button-primary {
-      background: #667eea;
-      color: white;
-    }
-
-    .button-primary:hover {
-      background: #5568d3;
-    }
-
-    .button-primary:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
-
-    .error-message {
-      background: #fee;
-      color: #c33;
-      padding: 0.75rem;
-      border-radius: 4px;
-      margin-top: 1rem;
-    }
-
-    .success-message {
-      background: #efe;
-      color: #3c3;
-      padding: 0.75rem;
-      border-radius: 4px;
-      margin-top: 1rem;
-    }
-
-    .loading {
-      text-align: center;
-      color: #999;
-      padding: 2rem;
-    }
-
-    .info {
-      color: #999;
-      text-align: center;
-      padding: 1rem;
-    }
-  `]
+    .sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 22px 28px 16px; border-bottom: 1px solid var(--border); }
+    .sheet-eyebrow { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 4px; }
+    .sheet h2 { font-size: 20px; }
+    .name { font-size: 14px; font-weight: 400; font-family: var(--font-body); }
+    .close { width: 36px; height: 36px; border-radius: 999px; border: none; background: var(--surface-alt); color: var(--text-muted); cursor: pointer; }
+    .sheet-body { padding: 22px 28px 28px; }
+    .picker { padding: 14px 28px 0; }
+  `],
 })
-export class DashboardComponent implements OnInit, OnDestroy {
-  private portfolioService = inject(PortfolioService);
-  private orderService = inject(OrderService);
-  private quoteService = inject(QuoteService);
-  private authService = inject(AuthService);
-  private oauthService = inject(OAuthService);
-  private router = inject(Router);
-  // The app is zoneless, so async callbacks must mark the view dirty for state changes to render
-  private cdr = inject(ChangeDetectorRef);
+export class DashboardComponent implements OnInit {
+  private readonly portfolio = inject(PortfolioApi);
+  private readonly orderApi = inject(OrderApi);
+  private readonly market = inject(MarketApi);
+  private readonly watchlistApi = inject(WatchlistApi);
+  private readonly destroyRef = inject(DestroyRef);
 
-  session = this.authService.session();
-  portfolio: PortfolioSummaryResponse | null = null;
-  orders: OrderResponse[] = [];
-  currentQuote: QuoteResponse | null = null;
+  protected readonly fmt = { money, signedMoney, price, quantity, percent, trendClass, segmentLabel, displaySymbol, orderStatus };
 
-  loading = {
-    portfolio: true,
-    orders: true,
-    order: false,
-  };
-
-  orderError = '';
-  orderSuccess = false;
-
-  orderForm = {
-    symbol: '',
-    side: 'BUY',
-    quantity: 1,
-  };
-
-  private subscriptions: Subscription[] = [];
-  // Reused only when retrying the same order after an uncertain failure, so a retry can't create a duplicate trade
-  private pendingOrder: { payload: string; key: string } | null = null;
+  protected readonly valuation = signal<PortfolioValuation | null>(null);
+  protected readonly orders = signal<Order[]>([]);
+  protected readonly watchlist = signal<WatchlistItem[]>([]);
+  protected readonly watchQuotes = signal<Record<string, Quote>>({});
+  protected readonly instruments = signal<Instrument[]>([]);
+  protected readonly tradeInstrument = signal<Instrument | null>(null);
+  protected readonly loadError = signal('');
+  protected readonly currency = computed(() => this.valuation()?.currency ?? 'USD');
+  protected readonly openOrders = computed(() => this.orders().filter(isOpen));
+  protected readonly defaultSymbol = computed(() => this.valuation()?.positions[0]?.symbol ?? 'AAPL');
 
   ngOnInit(): void {
-    if (!this.authService.isSignedIn()) {
-      this.router.navigate(['/sign-in']);
-      return;
-    }
-
-    this.loadPortfolio();
-    this.loadOrders();
+    this.refresh();
+    this.market.instruments().subscribe({ next: (list) => this.instruments.set(list), error: () => undefined });
+    // Orders in flight are followed every few seconds; prices refresh every 30
+    const fast = interval(3000).subscribe(() => {
+      if (this.openOrders().length > 0) this.loadOrders(true);
+    });
+    const slow = interval(30000).subscribe(() => this.refresh());
+    this.destroyRef.onDestroy(() => {
+      fast.unsubscribe();
+      slow.unsubscribe();
+    });
   }
 
-  ngOnDestroy(): void {
-    this.subscriptions.forEach(sub => sub.unsubscribe());
+  refresh(): void {
+    this.portfolio.valuation().subscribe({
+      next: (v) => {
+        this.valuation.set(v);
+        this.loadError.set('');
+      },
+      error: (e) => this.loadError.set(errorMessage(e, 'Your portfolio could not be loaded.')),
+    });
+    this.loadOrders(false);
+    this.watchlistApi.list().subscribe({ next: (items) => this.loadWatchlist(items), error: () => undefined });
   }
 
-  private loadPortfolio(): void {
-    this.loading.portfolio = true;
-    this.subscriptions.push(
-      this.portfolioService.getPortfolioSummary().subscribe({
-        next: (response) => {
-          this.portfolio = response.data!;
-          this.loading.portfolio = false;
-          this.cdr.markForCheck();
-        },
-        error: (error) => {
-          console.error('Failed to load portfolio:', error);
-          this.loading.portfolio = false;
-          this.cdr.markForCheck();
-        },
-      })
-    );
+  openTrade(symbol: string): void {
+    const instrument = this.instruments().find((i) => i.symbol === symbol)
+      ?? this.watchlist().find((w) => w.instrument.symbol === symbol)?.instrument;
+    if (instrument) this.tradeInstrument.set(instrument);
   }
 
-  private loadOrders(): void {
-    this.loading.orders = true;
-    this.subscriptions.push(
-      this.orderService.listOrders().subscribe({
-        next: (response) => {
-          this.orders = response.data || [];
-          this.loading.orders = false;
-          this.cdr.markForCheck();
-        },
-        error: (error) => {
-          console.error('Failed to load orders:', error);
-          this.loading.orders = false;
-          this.cdr.markForCheck();
-        },
-      })
-    );
+  closeTrade(): void {
+    this.tradeInstrument.set(null);
   }
 
-  getQuote(): void {
-    if (!this.orderForm.symbol) return;
-
-    this.subscriptions.push(
-      this.quoteService.getQuote(this.orderForm.symbol).subscribe({
-        next: (response) => {
-          this.currentQuote = response.data || null;
-          this.cdr.markForCheck();
-        },
-        error: (error) => {
-          console.error('Failed to get quote:', error);
-          this.currentQuote = null;
-          this.cdr.markForCheck();
-        },
-      })
-    );
+  protected quoteText(instrument: Instrument): string {
+    const q = this.watchQuotes()[instrument.symbol];
+    return q ? price(q.price, q.currency ?? instrument.baseCurrency) : '—';
   }
 
-  onPlaceOrder(): void {
-    if (!this.portfolio) {
-      this.orderError = 'Your trading account could not be loaded. Please refresh or sign in again.';
-      return;
-    }
-    if (!this.orderForm.symbol || this.orderForm.quantity <= 0) {
-      this.orderError = 'Please fill in all fields';
-      return;
-    }
-
-    this.loading.order = true;
-    this.orderError = '';
-    this.orderSuccess = false;
-
-    const symbol = this.orderForm.symbol.trim().toUpperCase();
-    const request = {
-      symbol,
-      side: this.orderForm.side as 'BUY' | 'SELL',
-      quantity: this.orderForm.quantity,
-      // Fauxnance crypto symbols look like X:BTC-USD
-      market: symbol.startsWith('X:') ? 'crypto' as const : 'stock' as const,
-      orderType: 'MARKET' as const,
-    };
-
-    const payload = JSON.stringify(request);
-    if (this.pendingOrder?.payload !== payload) {
-      this.pendingOrder = { payload, key: crypto.randomUUID() };
-    }
-
-    this.subscriptions.push(
-      this.orderService.submitOrder(request, this.pendingOrder.key).subscribe({
-        next: (response) => {
-          this.pendingOrder = null;
-          this.loading.order = false;
-          this.orderSuccess = true;
-          this.orderForm = { symbol: '', side: 'BUY', quantity: 1 };
-          this.currentQuote = null;
-          this.cdr.markForCheck();
-          this.loadOrders();
-          if (response.data) {
-            this.pollUntilSettled(response.data.orderId);
-          }
-          setTimeout(() => {
-            this.orderSuccess = false;
-            this.cdr.markForCheck();
-          }, 2000);
-        },
-        error: (error) => {
-          // Network errors and 5xx may have created the order server-side; keep the key so a retry is deduplicated
-          if (error.status !== 0 && error.status < 500) {
-            this.pendingOrder = null;
-          }
-          this.loading.order = false;
-          this.orderError = error.error?.error?.message || 'Failed to place order';
-          this.cdr.markForCheck();
-          // Rejected orders are still recorded, so show them in Recent Orders
-          this.loadOrders();
-        },
-      })
-    );
+  private loadOrders(settleCheck: boolean): void {
+    const openBefore = this.openOrders().length;
+    this.orderApi.list().subscribe({
+      next: (list) => {
+        this.orders.set(list);
+        // An order just settled: cash and holdings changed
+        if (settleCheck && this.openOrders().length < openBefore) {
+          this.portfolio.valuation().subscribe({ next: (v) => this.valuation.set(v), error: () => undefined });
+        }
+      },
+      error: () => undefined,
+    });
   }
 
-  onSellPosition(position: Position): void {
-    this.orderForm = { symbol: position.symbol, side: 'SELL', quantity: position.quantity };
-    this.orderError = '';
-    this.getQuote();
-    document.getElementById('symbol')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-
-  // Orders are accepted first and filled by a background worker, so poll until the order settles
-  private pollUntilSettled(orderId: number): void {
-    this.subscriptions.push(
-      timer(0, 2000).pipe(
-        switchMap(() => this.orderService.getOrder(orderId)),
-        takeWhile(response => response.data?.status === 'SUBMITTED' || response.data?.status === 'ACCEPTED', true),
-        take(30),
-      ).subscribe({
-        complete: () => {
-          this.loadPortfolio();
-          this.loadOrders();
-        },
-        error: (error) => console.error('Failed to poll order status:', error),
-      })
-    );
-  }
-
-  onSignOut(): void {
-    // Both services keep their own in-memory copy of the shared stored session, so clear both
-    const signOut$ = this.oauthService.isAuthenticated()
-      ? this.oauthService.signOut()
-      : this.authService.signOut();
-
-    signOut$.pipe(finalize(() => {
-      this.authService.clearSession();
-      this.router.navigate(['/login']);
-    })).subscribe({
-      error: (error) => console.error('Sign out error:', error),
+  private loadWatchlist(items: WatchlistItem[]): void {
+    this.watchlist.set(items);
+    if (items.length === 0) return;
+    forkJoin(items.map((w) => this.market.quote(w.instrument.symbol).pipe(catchError(() => of(null))))).subscribe((quotes) => {
+      const bySymbol: Record<string, Quote> = {};
+      quotes.forEach((q, i) => { if (q) bySymbol[items[i].instrument.symbol] = q; });
+      this.watchQuotes.set(bySymbol);
     });
   }
 }
