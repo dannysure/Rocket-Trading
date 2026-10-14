@@ -33,6 +33,7 @@ public class JwtService {
                 .claim("clientId", client.getClientId())
                 .claim("sessionId", session.getSessionId())
                 .claim("email", client.getEmail())
+                .claim("role", client.getRole())
                 .signWith(signingKey())
                 .compact();
     }
@@ -48,7 +49,8 @@ public class JwtService {
         long clientId = claims.get("clientId", Number.class).longValue();
         long sessionId = claims.get("sessionId", Number.class).longValue();
         String email = claims.get("email", String.class);
-        return new AuthenticatedClient(clientId, sessionId, email);
+        String role = claims.get("role", String.class);
+        return new AuthenticatedClient(clientId, sessionId, email, role == null ? "CLIENT" : role);
     }
 
     private SecretKey signingKey() {

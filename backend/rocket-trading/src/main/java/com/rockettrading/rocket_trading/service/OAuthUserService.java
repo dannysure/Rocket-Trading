@@ -1,9 +1,7 @@
 package com.rockettrading.rocket_trading.service;
 
 import com.rockettrading.rocket_trading.model.Client;
-import com.rockettrading.rocket_trading.repository.ClientAccountRepository;
 import com.rockettrading.rocket_trading.repository.ClientRepository;
-import com.rockettrading.rocket_trading.repository.model.ClientAccountRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.GrantedAuthority;
@@ -15,8 +13,6 @@ import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -39,11 +35,11 @@ import java.util.concurrent.ThreadLocalRandom;
 public class OAuthUserService extends DefaultOAuth2UserService {
 
   private final ClientRepository clientRepository;
-  private final ClientAccountRepository clientAccountRepository;
+  private final AccountProvisioningService accountProvisioningService;
 
-  public OAuthUserService(ClientRepository clientRepository, ClientAccountRepository clientAccountRepository) {
+  public OAuthUserService(ClientRepository clientRepository, AccountProvisioningService accountProvisioningService) {
     this.clientRepository = clientRepository;
-    this.clientAccountRepository = clientAccountRepository;
+    this.accountProvisioningService = accountProvisioningService;
   }
 
   /**
@@ -110,8 +106,11 @@ public class OAuthUserService extends DefaultOAuth2UserService {
       log.info("Created new user from {} provider: {} (clientId={})", registrationId, email, client.getClientId());
     }
 
-    // Portfolio and order endpoints require a DIRECT_TRADING account; also backfills OAuth users created before this existed
-    ensureDirectTradingAccount(client.getClientId());
+    // Portfolio and order endpoints require a DIRECT_TRADING account; staff identities never trade
+    if ("CLIENT".equals(client.getRole())
+        && accountProvisioningService.ensureDirectTradingAccount(client.getClientId(), null)) {
+      log.info("Created DIRECT_TRADING account for clientId={}", client.getClientId());
+    }
 
     // Build OAuth2User with mapped attributes
     Map<String, Object> attributes = new HashMap<>(oAuth2User.getAttributes());
@@ -129,23 +128,6 @@ public class OAuthUserService extends DefaultOAuth2UserService {
       attributes,
       getAttributeNameKey(registrationId)
     );
-  }
-
-  /**
-   * Create the client's DIRECT_TRADING account if it doesn't exist yet
-   */
-  private void ensureDirectTradingAccount(long clientId) {
-    if (clientAccountRepository.findDirectTradingAccountByClientId(clientId) != null) {
-      return;
-    }
-    ClientAccountRecord account = new ClientAccountRecord();
-    account.setClientId(clientId);
-    account.setAccountType("DIRECT_TRADING");
-    account.setCashBalance(new BigDecimal("10000.00"));
-    account.setCurrency("USD");
-    account.setOpenedDate(LocalDate.now());
-    clientAccountRepository.insert(account);
-    log.info("Created DIRECT_TRADING account for clientId={}", clientId);
   }
 
   /**

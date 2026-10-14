@@ -14,6 +14,10 @@ public class Quote {
     private Instant capturedAt;
     // Provider said its cached price is past its freshness window; still accepted while within the max quote age
     private boolean providerStale;
+    // Display-only fields from the provider; never used to price an order
+    private String currency;
+    private BigDecimal changePercent;
+    private BigDecimal previousClose;
 
     public Quote() {
     }
@@ -152,6 +156,30 @@ public class Quote {
 
     public void setProviderStale(boolean providerStale) {
         this.providerStale = providerStale;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public void setCurrency(String currency) {
+        this.currency = currency == null || currency.isBlank() ? null : currency.trim().toUpperCase();
+    }
+
+    public BigDecimal getChangePercent() {
+        return changePercent;
+    }
+
+    public void setChangePercent(BigDecimal changePercent) {
+        this.changePercent = changePercent;
+    }
+
+    public BigDecimal getPreviousClose() {
+        return previousClose;
+    }
+
+    public void setPreviousClose(BigDecimal previousClose) {
+        this.previousClose = previousClose;
     }
 }
 

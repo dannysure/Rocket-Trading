@@ -6,9 +6,23 @@ import java.math.BigDecimal;
 
 public record PositionResponse(
         String symbol,
-        BigDecimal quantity
+        String name,
+        String assetClass,
+        String segment,
+        String instrumentCurrency,
+        BigDecimal quantity,
+        // Per unit, in the account currency
+        BigDecimal averageCost
 ) {
-    public static PositionResponse from(HoldingRecord holdingRecord) {
-        return new PositionResponse(holdingRecord.getTickerSymbol(), holdingRecord.getQuantity());
+    public static PositionResponse from(HoldingRecord holding) {
+        return new PositionResponse(
+                holding.getTickerSymbol(),
+                holding.getInstrumentName(),
+                holding.getAssetClass(),
+                holding.getMarketSegment(),
+                holding.getBaseCurrency(),
+                holding.getQuantity(),
+                holding.getAverageCost()
+        );
     }
 }

@@ -1,6 +1,7 @@
 package com.rockettrading.rocket_trading.controller;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,9 +21,9 @@ import java.io.IOException;
 @RequestMapping("/api/v1/oauth2")
 public class OAuthAuthorizationController {
 
-  private final ClientRegistrationRepository clientRegistrationRepository;
+  private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository;
 
-  public OAuthAuthorizationController(ClientRegistrationRepository clientRegistrationRepository) {
+  public OAuthAuthorizationController(ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository) {
     this.clientRegistrationRepository = clientRegistrationRepository;
   }
 
@@ -38,13 +39,12 @@ public class OAuthAuthorizationController {
     String registrationId = provider.toLowerCase();
     
     // Verify provider is registered
-    try {
-      clientRegistrationRepository.findByRegistrationId(registrationId);
-    } catch (IllegalArgumentException e) {
+    ClientRegistrationRepository registrations = clientRegistrationRepository.getIfAvailable();
+    if (registrations == null || registrations.findByRegistrationId(registrationId) == null) {
       log.error("Provider not registered: {}", provider);
       response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
       response.setContentType("application/json");
-      response.getWriter().write("{\"error\": \"Provider not registered: " + provider + "\"}");
+      response.getWriter().write("{\"error\": \"Provider not registered\"}");
       return;
     }
     

@@ -14,9 +14,11 @@ public record ReportingOverviewResponse(
         long rejectedOrders,
         long totalFills,
         BigDecimal totalNotional,
-        long activeClients
+        long activeClients,
+        // When the reporting snapshot was taken; figures exclude anything after it
+        Instant dataAsOf
 ) {
-    public static ReportingOverviewResponse from(Instant from, Instant to, ReportingOverviewRecord record) {
+    public static ReportingOverviewResponse from(Instant from, Instant to, ReportingOverviewRecord record, Instant dataAsOf) {
         return new ReportingOverviewResponse(
                 from,
                 to,
@@ -26,7 +28,8 @@ public record ReportingOverviewResponse(
                 record.getRejectedOrders(),
                 record.getTotalFills(),
                 record.getTotalNotional(),
-                record.getActiveClients()
+                record.getActiveClients(),
+                dataAsOf
         );
     }
 }

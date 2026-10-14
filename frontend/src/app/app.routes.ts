@@ -1,72 +1,54 @@
-import { Routes } from '@angular/router';
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
-import { OAuthService } from './oauth.service';
-import { AuthService } from './api.service';
+import { CanActivateFn, Router, Routes } from '@angular/router';
+import { Role, SessionStore } from './api.service';
 import { LoginComponent } from './login.component';
 import { CallbackComponent } from './callback.component';
 import { CompleteProfileComponent } from './complete-profile.component';
-import { RegisterComponent } from './register.component';
-import { SignInComponent } from './sign-in.component';
 import { DashboardComponent } from './dashboard.component';
+import { TradeComponent } from './trade.component';
+import { BlotterComponent } from './blotter.component';
+import { InsightsComponent } from './insights.component';
+import { OpsComponent } from './ops.component';
 
-/**
- * Guard to protect routes that require authentication
- * Checks if user has valid OAuth session
- */
-export const authGuard = (route: any, state: any) => {
-  const oauthService = inject(OAuthService);
-  const router = inject(Router);
+/** Lets a signed-in person with one of the roles through; anyone else goes to sign-in or their own home. */
+export function requireRole(...roles: Role[]): CanActivateFn {
+  return () => {
+    const sessions = inject(SessionStore);
+    const router = inject(Router);
+    if (!sessions.isActive()) {
+      sessions.clear();
+      return router.createUrlTree(['/login']);
+    }
+    const role = sessions.role();
+    return role && roles.includes(role) ? true : router.createUrlTree([sessions.homeRoute()]);
+  };
+}
 
-  if (oauthService.isAuthenticated()) {
-    return true;
-  }
-
-  // Fallback to legacy AuthService for backward compatibility
-  const authService = inject(AuthService);
-  if (authService.isSignedIn()) {
-    return true;
-  }
-
-  router.navigate(['/login']);
-  return false;
+export const signedOutOnly: CanActivateFn = () => {
+  const sessions = inject(SessionStore);
+  return sessions.isActive() ? inject(Router).createUrlTree([sessions.homeRoute()]) : true;
 };
 
-/**
- * Guard to redirect authenticated users away from auth pages
- */
-export const noAuthGuard = (route: any, state: any) => {
-  const oauthService = inject(OAuthService);
-  const authService = inject(AuthService);
-  const router = inject(Router);
-
-  const isOAuthAuthenticated = oauthService.isAuthenticated();
-  const isLegacyAuthenticated = authService.isSignedIn();
-
-  if (!isOAuthAuthenticated && !isLegacyAuthenticated) {
-    return true;
-  }
-
-  router.navigate(['/dashboard']);
-  return false;
+export const routeToHome: CanActivateFn = () => {
+  const sessions = inject(SessionStore);
+  return inject(Router).createUrlTree([sessions.isActive() ? sessions.homeRoute() : '/login']);
 };
 
 export const routes: Routes = [
-  // Default redirect
-  { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
+  { path: '', pathMatch: 'full', canActivate: [routeToHome], children: [] },
+  { path: 'login', component: LoginComponent, canActivate: [signedOutOnly], title: 'Sign in · Rocket Trading' },
+  { path: 'auth/callback', component: CallbackComponent, title: 'Signing in · Rocket Trading' },
+  { path: 'complete-profile', component: CompleteProfileComponent, canActivate: [requireRole('CLIENT')], title: 'Your profile · Rocket Trading' },
 
-  // OAuth authentication flow
-  { path: 'login', component: LoginComponent, canActivate: [noAuthGuard] },
-  { path: 'auth/callback', component: CallbackComponent },
-  { path: 'complete-profile', component: CompleteProfileComponent, canActivate: [authGuard] },
+  { path: 'dashboard', component: DashboardComponent, canActivate: [requireRole('CLIENT')], title: 'Dashboard · Rocket Trading' },
+  { path: 'trade', component: TradeComponent, canActivate: [requireRole('CLIENT')], title: 'Markets · Rocket Trading' },
+  { path: 'blotter', component: BlotterComponent, canActivate: [requireRole('CLIENT')], title: 'Blotter · Rocket Trading' },
 
-  // Legacy authentication flow (deprecated, kept for backward compatibility)
-  { path: 'register', component: RegisterComponent, canActivate: [noAuthGuard] },
-  { path: 'sign-in', component: SignInComponent, canActivate: [noAuthGuard] },
+  { path: 'insights', component: InsightsComponent, canActivate: [requireRole('ANALYST', 'OPERATIONS')], title: 'Insights · Rocket Trading' },
+  { path: 'ops', component: OpsComponent, canActivate: [requireRole('OPERATIONS')], title: 'Trade lookup · Rocket Trading' },
 
-  // Protected routes
-  { path: 'dashboard', component: DashboardComponent, canActivate: [authGuard] },
-
-  // Catch-all
-  { path: '**', redirectTo: '/dashboard' },
+  // Old sign-in pages now live on /login
+  { path: 'register', redirectTo: 'login' },
+  { path: 'sign-in', redirectTo: 'login' },
+  { path: '**', canActivate: [routeToHome], children: [] },
 ];

@@ -10,15 +10,23 @@ public record FillResponse(
         long orderId,
         BigDecimal executedQuantity,
         BigDecimal executedPrice,
+        String instrumentCurrency,
+        BigDecimal fxRate,
+        BigDecimal settlementAmount,
+        String settlementCurrency,
         Instant executedAt
 ) {
-    public static FillResponse from(FillRecord fillRecord) {
+    public static FillResponse from(FillRecord fill) {
         return new FillResponse(
-                fillRecord.getFillId(),
-                fillRecord.getOrderId(),
-                fillRecord.getExecutedQuantity(),
-                fillRecord.getExecutedPrice(),
-                fillRecord.getExecutedAt()
+                fill.getFillId(),
+                fill.getOrderId(),
+                fill.getExecutedQuantity(),
+                fill.getExecutedPrice(),
+                fill.getInstrumentCurrency(),
+                fill.getFxRate(),
+                fill.getSettlementAmount(),
+                fill.getSettlementCurrency(),
+                fill.getExecutedAt()
         );
     }
 }

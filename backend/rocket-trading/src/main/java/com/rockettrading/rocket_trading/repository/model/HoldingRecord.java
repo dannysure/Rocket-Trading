@@ -14,4 +14,10 @@ public class HoldingRecord {
     private String tickerSymbol;
     private BigDecimal quantity;
     private Instant asOfTimestamp;
+    // Per unit, in the account currency
+    private BigDecimal averageCost;
+    private String instrumentName;
+    private String assetClass;
+    private String marketSegment;
+    private String baseCurrency;
 }
