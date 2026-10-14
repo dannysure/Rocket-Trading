@@ -378,6 +378,127 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /perps/markets:
+    get:
+      tags: [Perpetuals]
+      operationId: listPerpMarkets
+      summary: List listed perpetual futures markets and their risk parameters
+      responses:
+        '200':
+          description: Active markets
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PerpMarketListEnvelope'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /perps/markets/{symbol}/ticker:
+    get:
+      tags: [Perpetuals]
+      operationId: getPerpTicker
+      summary: Live mark, oracle, funding and open interest for one market
+      description: |
+        Mark is the mid of the current underlying quote; oracle is the provider's price.
+        fundingRate is the hourly rate that will settle at nextFundingAt (top of the UTC hour).
+        Stale or invalid quotes return 409 like the spot quote endpoint.
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema: {type: string, example: BTC-PERP}
+      responses:
+        '200':
+          description: Current ticker
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PerpTickerEnvelope'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /perps/account:
+    get:
+      tags: [Perpetuals]
+      operationId: getPerpAccount
+      summary: Collateral, margin, unrealized PnL and open positions for the signed-in client
+      description: Mark-dependent position fields are null while that market's price is unavailable.
+      responses:
+        '200':
+          description: Perpetuals account
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PerpAccountEnvelope'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /perps/orders:
+    post:
+      tags: [Perpetuals]
+      operationId: submitPerpOrder
+      summary: Fill an isolated-margin market order synchronously
+      description: |
+        Buys fill at the quote ask and sells at the bid. Same-direction orders open or add to the one
+        net position per market (leverage must match the open position); opposite orders reduce,
+        close, or flip it. Margin (notional / leverage) and the taker fee are debited from the
+        DIRECT_TRADING cash balance; closing returns released margin plus realized PnL minus fees,
+        never less than zero. Idempotency and rejection behave as for POST /orders, except
+        success returns 201 with a FILLED order.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9._:-]+$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SubmitPerpOrderRequest'}
+            example: {symbol: BTC-PERP, side: BUY, size: 0.01, leverage: 10, reduceOnly: false}
+      responses:
+        '201':
+          description: Filled order, or the stored result of an idempotent retry
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PerpOrderEnvelope'}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    get:
+      tags: [Perpetuals]
+      operationId: listPerpOrders
+      summary: Latest 200 perp orders and liquidations, newest first
+      responses:
+        '200':
+          description: Orders, possibly empty
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PerpOrderListEnvelope'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /perps/funding:
+    get:
+      tags: [Perpetuals]
+      operationId: listPerpFunding
+      summary: Latest 200 hourly funding payments, newest first
+      responses:
+        '200':
+          description: Funding payments, possibly empty
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PerpFundingListEnvelope'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 components:
   securitySchemes:
     bearerAuth:
@@ -725,4 +846,148 @@ components:
         data:
           type: array
           items: {$ref: '#/components/schemas/ClientSegmentActivityResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    SubmitPerpOrderRequest:
+      type: object
+      required: [symbol, side, size, leverage]
+      properties:
+        symbol: {type: string, maxLength: 20, example: BTC-PERP}
+        side: {type: string, enum: [BUY, SELL], description: BUY longs, SELL shorts; trimmed and case-insensitive.}
+        size:
+          type: number
+          minimum: 0.000001
+          multipleOf: 0.000001
+          description: Base-asset size. Reduce-only orders are capped at the open size.
+        leverage: {type: integer, minimum: 1, maximum: 100, description: Also limited by the market's maxLeverage (409 when exceeded).}
+        reduceOnly: {type: boolean, default: false}
+    PerpMarketResponse:
+      type: object
+      required: [symbol, baseAsset, underlyingSymbol, quoteCurrency, maxLeverage, takerFeeRate, maintenanceMarginRate]
+      properties:
+        symbol: {type: string, example: BTC-PERP}
+        baseAsset: {type: string, example: BTC}
+        underlyingSymbol: {type: string, example: 'X:BTC-USD'}
+        quoteCurrency: {type: string, example: USD}
+        maxLeverage: {type: integer}
+        takerFeeRate: {type: number, example: 0.00045}
+        maintenanceMarginRate: {type: number, description: Half the initial margin at max leverage.}
+    PerpTickerResponse:
+      type: object
+      required: [symbol, markPrice, oraclePrice, bid, ask, fundingRate, nextFundingAt, openInterest, maxLeverage, takerFeeRate, maintenanceMarginRate, capturedAt, delayed]
+      properties:
+        symbol: {type: string}
+        markPrice: {type: number}
+        oraclePrice: {type: number}
+        bid: {type: number}
+        ask: {type: number}
+        fundingRate: {type: number, description: 'Hourly rate, capped at +/-4%. Positive means longs pay shorts.'}
+        nextFundingAt: {type: string, format: date-time}
+        openInterest: {type: number, description: Sum of open position sizes in the base asset.}
+        maxLeverage: {type: integer}
+        takerFeeRate: {type: number}
+        maintenanceMarginRate: {type: number}
+        capturedAt: {type: string, format: date-time}
+        delayed: {type: boolean}
+    PerpPositionResponse:
+      type: object
+      required: [positionId, symbol, side, size, entryPrice, margin, leverage, cumulativeFunding, openedAt]
+      properties:
+        positionId: {type: integer, format: int64}
+        symbol: {type: string}
+        side: {type: string, enum: [LONG, SHORT]}
+        size: {type: number}
+        entryPrice: {type: number}
+        markPrice: {type: number, nullable: true}
+        positionValue: {type: number, nullable: true}
+        unrealizedPnl: {type: number, nullable: true}
+        returnOnEquity: {type: number, nullable: true}
+        liquidationPrice: {type: number, nullable: true, description: Null when no positive price can trigger liquidation.}
+        margin: {type: number, description: Isolated margin after funding.}
+        leverage: {type: integer}
+        cumulativeFunding: {type: number, description: Positive means the position has paid funding overall.}
+        openedAt: {type: string, format: date-time}
+    PerpAccountResponse:
+      type: object
+      required: [accountId, currency, availableCollateral, totalMargin, unrealizedPnl, accountValue, positions]
+      properties:
+        accountId: {type: integer, format: int64}
+        currency: {type: string}
+        availableCollateral: {type: number, description: The DIRECT_TRADING cash balance.}
+        totalMargin: {type: number}
+        unrealizedPnl: {type: number}
+        accountValue: {type: number}
+        positions:
+          type: array
+          items: {$ref: '#/components/schemas/PerpPositionResponse'}
+    PerpOrderResponse:
+      type: object
+      required: [orderId, symbol, side, kind, requestedSize, leverage, reduceOnly, status, fee, realizedPnl, submittedAt]
+      properties:
+        orderId: {type: integer, format: int64}
+        symbol: {type: string}
+        side: {type: string, enum: [BUY, SELL]}
+        kind: {type: string, enum: [MARKET, LIQUIDATION]}
+        requestedSize: {type: number}
+        filledSize: {type: number, nullable: true}
+        leverage: {type: integer}
+        reduceOnly: {type: boolean}
+        status: {type: string, enum: [FILLED, REJECTED]}
+        fillPrice: {type: number, nullable: true}
+        fee: {type: number}
+        realizedPnl: {type: number, description: For liquidations, the forfeited isolated margin as a loss.}
+        rejectionReason: {type: string, nullable: true}
+        submittedAt: {type: string, format: date-time}
+    PerpFundingResponse:
+      type: object
+      required: [fundingId, symbol, side, size, markPrice, fundingRate, payment, fundingTime]
+      properties:
+        fundingId: {type: integer, format: int64}
+        symbol: {type: string}
+        side: {type: string, enum: [LONG, SHORT]}
+        size: {type: number}
+        markPrice: {type: number}
+        fundingRate: {type: number}
+        payment: {type: number, description: Positive when the position paid, negative when it received.}
+        fundingTime: {type: string, format: date-time}
+    PerpMarketListEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/PerpMarketResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    PerpTickerEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/PerpTickerResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    PerpAccountEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/PerpAccountResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    PerpOrderEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/PerpOrderResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    PerpOrderListEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/PerpOrderResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    PerpFundingListEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/PerpFundingResponse'}
         meta: {$ref: '#/components/schemas/ResponseMeta'}
