@@ -6,6 +6,8 @@ import { routes } from './app.routes';
 import { SessionStore } from './api.service';
 import { dateOfBirthProblem } from './complete-profile.component';
 import { describeAuditEvent, displaySymbol, money, orderStatus } from './format';
+import { NavHeaderComponent } from './nav-header.component';
+import { PerpsComponent } from './perps.component';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -31,6 +33,20 @@ describe('App', () => {
     expect(sessions.isStaff()).toBe(true);
     sessions.set({ ...base, role: 'OPERATIONS' });
     expect(sessions.homeRoute()).toBe('/ops');
+  });
+
+  it('serves the perpetuals page to clients behind the client guard', () => {
+    const route = routes.find((r) => r.path === 'perps');
+    expect(route?.component).toBe(PerpsComponent);
+    expect(route?.canActivate?.length).toBe(1);
+  });
+
+  it('links clients to the perpetuals page from the navigation header', () => {
+    TestBed.inject(SessionStore).set({ clientId: 1, name: 'Test', email: 't@example.com', token: 't', role: 'CLIENT', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    const fixture = TestBed.createComponent(NavHeaderComponent);
+    fixture.detectChanges();
+    const link = (fixture.nativeElement as HTMLElement).querySelector('a[href="/perps"]');
+    expect(link?.textContent).toContain('Perps');
   });
 
   it('treats an expired session as signed out', () => {

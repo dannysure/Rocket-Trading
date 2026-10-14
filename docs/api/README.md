@@ -50,6 +50,20 @@ not wait for a future market price. Partial fills and FX conversion are not impl
 The client cannot select arbitrary new instruments. The migration seeds the supported
 USD catalogue; database catalogue administration is outside this UI.
 
+## Perpetual futures
+
+`/perps/*` adds isolated-margin perpetuals (BTC-PERP, ETH-PERP) priced from the same quote
+provider: mark is the quote mid, oracle is the provider price. `POST /perps/orders` takes
+`{"symbol":"BTC-PERP","side":"BUY","size":0.01,"leverage":10,"reduceOnly":false}` with an
+`Idempotency-Key` and fills synchronously (201) at the ask/bid. Each account holds one net
+position per market; margin and taker fees come from the DIRECT_TRADING cash balance and
+spot orders, fills, holdings and ledger are untouched. Funding settles at the top of every
+UTC hour (premium plus clamped interest, capped at 4%/h) against isolated margin, at most once
+per position per hour. A sweep every 5 seconds liquidates positions whose equity falls to
+maintenance margin (half the initial margin at max leverage); the isolated margin is
+forfeited. The Angular `/perps` page uses these endpoints; its order book is simulated
+depth around the live quote, and limit orders and TP/SL are not implemented.
+
 ## Persistence and verification
 
 The authoritative schema is in the backend's Flyway migrations. Repositories use MyBatis
