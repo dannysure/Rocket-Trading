@@ -13,9 +13,12 @@ security:
   - bearerAuth: []
 tags:
   - name: Auth
+  - name: Profile
+  - name: Instruments
   - name: Quotes
   - name: Portfolio
   - name: Orders
+  - name: Reporting
 paths:
   /auth/register:
     post:
@@ -132,6 +135,40 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /me:
+    get:
+      tags: [Profile]
+      operationId: getProfile
+      summary: Get the signed-in fixture client profile
+      responses:
+        '200':
+          description: Client profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /instruments:
+    get:
+      tags: [Instruments]
+      operationId: listSupportedInstruments
+      summary: List the supported tradable catalogue
+      responses:
+        '200':
+          description: Supported instruments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstrumentListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /orders:
     post:
       tags: [Orders]
@@ -213,6 +250,28 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /orders/{orderId}/timeline:
+    get:
+      tags: [Orders]
+      operationId: getOrderTimeline
+      summary: Get the order's audit timeline for the authenticated client
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Ordered audit events for submission, pricing, settlement and fills
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderTimelineEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /fills/{orderId}:
     get:
       tags: [Orders]
@@ -236,6 +295,87 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /reporting/overview:
+    get:
+      tags: [Reporting]
+      operationId: getReportingOverview
+      summary: Get a reporting summary for a time window
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+        - name: to
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+      responses:
+        '200':
+          description: Aggregate reporting snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportingOverviewEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /reporting/instruments:
+    get:
+      tags: [Reporting]
+      operationId: listInstrumentActivity
+      summary: Break out trading activity by instrument over a time window
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+        - name: to
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+      responses:
+        '200':
+          description: Per-instrument activity summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstrumentActivityListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /reporting/segments:
+    get:
+      tags: [Reporting]
+      operationId: listClientSegmentActivity
+      summary: Break out trading activity by client risk profile over a time window
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+        - name: to
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+      responses:
+        '200':
+          description: Per-segment activity summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientSegmentActivityListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
 components:
@@ -403,6 +543,75 @@ components:
         positions:
           type: array
           items: {$ref: '#/components/schemas/PositionResponse'}
+    ClientProfileResponse:
+      type: object
+      required: [clientId, name, email]
+      properties:
+        clientId: {type: integer, format: int64}
+        name: {type: string}
+        email: {type: string, format: email}
+    SupportedInstrumentResponse:
+      type: object
+      required: [instrumentId, symbol, name, assetClass, baseCurrency, tradable, market]
+      properties:
+        instrumentId: {type: integer, format: int64}
+        symbol: {type: string}
+        name: {type: string}
+        assetClass: {type: string}
+        baseCurrency: {type: string}
+        tradable: {type: boolean}
+        market: {type: string, enum: [stock, crypto]}
+    OrderTimelineEventResponse:
+      type: object
+      required: [auditId, entityName, entityId, actionType, recordedAt, stateAfter]
+      properties:
+        auditId: {type: integer, format: int64}
+        entityName: {type: string}
+        entityId: {type: integer, format: int64}
+        actionType: {type: string}
+        recordedAt: {type: string, format: date-time}
+        stateBefore: {type: object, nullable: true, additionalProperties: true}
+        stateAfter: {type: object, additionalProperties: true}
+    OrderTimelineResponse:
+      type: object
+      required: [orderId, events]
+      properties:
+        orderId: {type: integer, format: int64}
+        events:
+          type: array
+          items: {$ref: '#/components/schemas/OrderTimelineEventResponse'}
+    ReportingOverviewResponse:
+      type: object
+      required: [from, to, totalOrders, acceptedOrders, filledOrders, rejectedOrders, totalFills, totalNotional, activeClients]
+      properties:
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+        totalOrders: {type: integer, format: int64}
+        acceptedOrders: {type: integer, format: int64}
+        filledOrders: {type: integer, format: int64}
+        rejectedOrders: {type: integer, format: int64}
+        totalFills: {type: integer, format: int64}
+        totalNotional: {type: number}
+        activeClients: {type: integer, format: int64}
+    InstrumentActivityResponse:
+      type: object
+      required: [symbol, assetClass, orderCount, fillCount, buyQuantity, sellQuantity]
+      properties:
+        symbol: {type: string}
+        assetClass: {type: string}
+        orderCount: {type: integer, format: int64}
+        fillCount: {type: integer, format: int64}
+        buyQuantity: {type: number}
+        sellQuantity: {type: number}
+        lastSubmittedAt: {type: string, format: date-time, nullable: true}
+    ClientSegmentActivityResponse:
+      type: object
+      required: [riskProfile, clientCount, orderCount, totalNotional]
+      properties:
+        riskProfile: {type: string}
+        clientCount: {type: integer, format: int64}
+        orderCount: {type: integer, format: int64}
+        totalNotional: {type: number}
     ResponseMeta:
       type: object
       required: [requestId, timestamp]
@@ -453,6 +662,20 @@ components:
       properties:
         data: {$ref: '#/components/schemas/PortfolioSummaryResponse'}
         meta: {$ref: '#/components/schemas/ResponseMeta'}
+    ProfileEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/ClientProfileResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    InstrumentListEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/SupportedInstrumentResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
     OrderEnvelope:
       type: object
       required: [data, meta]
@@ -474,4 +697,32 @@ components:
         data:
           type: array
           items: {$ref: '#/components/schemas/FillResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    OrderTimelineEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/OrderTimelineResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    ReportingOverviewEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {$ref: '#/components/schemas/ReportingOverviewResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    InstrumentActivityListEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/InstrumentActivityResponse'}
+        meta: {$ref: '#/components/schemas/ResponseMeta'}
+    ClientSegmentActivityListEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/ClientSegmentActivityResponse'}
         meta: {$ref: '#/components/schemas/ResponseMeta'}

@@ -13,30 +13,23 @@ import java.util.List;
 public interface HoldingRepository {
 
     @Select("""
-            select holding_id, account_id, instrument_id, quantity, as_of_timestamp
+            select holding_id, account_id, instrument_id, quantity, average_cost, as_of_timestamp
             from account_holdings
             where account_id = #{accountId}
               and instrument_id = #{instrumentId}
             """)
     HoldingRecord findAccountHolding(@Param("accountId") long accountId, @Param("instrumentId") long instrumentId);
 
-    @Select("""
-            select client_holding_id as holding_id, client_id, instrument_id, total_quantity as quantity, as_of_timestamp
-            from client_holdings
-            where client_id = #{clientId}
-              and instrument_id = #{instrumentId}
-            """)
-    HoldingRecord findClientHolding(@Param("clientId") long clientId, @Param("instrumentId") long instrumentId);
-
     @Insert("""
-            insert into account_holdings (account_id, instrument_id, quantity, as_of_timestamp)
-            values (#{accountId}, #{instrumentId}, #{quantity}, current_timestamp)
+            insert into account_holdings (account_id, instrument_id, quantity, average_cost, as_of_timestamp)
+            values (#{accountId}, #{instrumentId}, #{quantity}, #{averageCost}, current_timestamp)
             on conflict (account_id, instrument_id)
-            do update set quantity = excluded.quantity, as_of_timestamp = current_timestamp
+            do update set quantity = excluded.quantity, average_cost = excluded.average_cost, as_of_timestamp = current_timestamp
             """)
     int upsertAccountHolding(@Param("accountId") long accountId,
                              @Param("instrumentId") long instrumentId,
-                             @Param("quantity") BigDecimal quantity);
+                             @Param("quantity") BigDecimal quantity,
+                             @Param("averageCost") BigDecimal averageCost);
 
     @Insert("""
             insert into client_holdings (client_id, instrument_id, total_quantity, as_of_timestamp)
@@ -48,17 +41,24 @@ public interface HoldingRepository {
                             @Param("instrumentId") long instrumentId,
                             @Param("quantity") BigDecimal quantity);
 
+    // Fully sold positions are kept for history but not shown as holdings
     @Select("""
-            select ch.client_holding_id as holding_id,
-                   ch.client_id,
-                   ch.instrument_id,
+            select ah.holding_id,
+                   ah.account_id,
+                   ah.instrument_id,
                    fi.ticker_symbol,
-                   ch.total_quantity as quantity,
-                   ch.as_of_timestamp
-            from client_holdings ch
-            join financial_instruments fi on fi.instrument_id = ch.instrument_id
-            where ch.client_id = #{clientId}
+                   fi.instrument_name,
+                   fi.asset_class,
+                   fi.market_segment,
+                   fi.base_currency,
+                   ah.quantity,
+                   ah.average_cost,
+                   ah.as_of_timestamp
+            from account_holdings ah
+            join financial_instruments fi on fi.instrument_id = ah.instrument_id
+            where ah.account_id = #{accountId}
+              and ah.quantity > 0
             order by fi.ticker_symbol
             """)
-    List<HoldingRecord> findClientHoldings(long clientId);
+    List<HoldingRecord> findOpenAccountHoldings(long accountId);
 }

@@ -13,9 +13,15 @@ public record QuoteResponse(
         long bidVolume,
         long askVolume,
         Instant capturedAt,
-        String market
+        String market,
+        boolean delayed,
+        String currency,
+        BigDecimal changePercent,
+        BigDecimal previousClose,
+        // False when the price is older than the market's freshness window, e.g. while that market is closed
+        boolean current
 ) {
-    public static QuoteResponse from(Quote quote, String market) {
+    public static QuoteResponse from(Quote quote, String market, boolean current) {
         return new QuoteResponse(
                 quote.getSymbol(),
                 quote.getBid(),
@@ -24,7 +30,12 @@ public record QuoteResponse(
                 quote.getBidVolume(),
                 quote.getAskVolume(),
                 quote.getCapturedAt(),
-                market
+                market,
+                quote.isProviderStale(),
+                quote.getCurrency(),
+                quote.getChangePercent(),
+                quote.getPreviousClose(),
+                current
         );
     }
 }

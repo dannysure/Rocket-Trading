@@ -33,6 +33,7 @@ public class JwtService {
                 .claim("clientId", client.getClientId())
                 .claim("sessionId", session.getSessionId())
                 .claim("email", client.getEmail())
+                .claim("role", client.getRole())
                 .signWith(signingKey())
                 .compact();
     }
@@ -40,6 +41,7 @@ public class JwtService {
     public AuthenticatedClient parseToken(String token) {
         Claims claims = Jwts.parser()
                 .verifyWith(signingKey())
+            .requireIssuer(jwtProperties.getIssuer())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
@@ -47,14 +49,29 @@ public class JwtService {
         long clientId = claims.get("clientId", Number.class).longValue();
         long sessionId = claims.get("sessionId", Number.class).longValue();
         String email = claims.get("email", String.class);
-        return new AuthenticatedClient(clientId, sessionId, email);
+        String role = claims.get("role", String.class);
+        return new AuthenticatedClient(clientId, sessionId, email, role == null ? "CLIENT" : role);
     }
 
     private SecretKey signingKey() {
-        byte[] rawSecret = jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8);
+        String configuredSecret = jwtProperties.getSecret();
+        if (configuredSecret == null || configuredSecret.isBlank()) {
+            throw new IllegalStateException("JWT secret must be configured");
+        }
+
+        byte[] rawSecret = configuredSecret.getBytes(StandardCharsets.UTF_8);
         if (rawSecret.length >= 32) {
             return Keys.hmacShaKeyFor(rawSecret);
         }
-        return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtProperties.getSecret()));
+
+        try {
+            byte[] decodedSecret = Decoders.BASE64.decode(configuredSecret);
+            if (decodedSecret.length < 32) {
+                throw new IllegalStateException("JWT secret must be at least 32 bytes");
+            }
+            return Keys.hmacShaKeyFor(decodedSecret);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException("JWT secret must be at least 32 bytes or valid base64", exception);
+        }
     }
 }

@@ -36,7 +36,7 @@ class RestartRecoveryIT {
         long client;
         long pending;
         try (var app = start(false)) {
-            client = app.getBean(AuthService.class).register(new RegisterClientRequest("Restart", "restart@example.com", null, null, new BigDecimal("10000"))).clientId();
+            client = app.getBean(AuthService.class).register(new RegisterClientRequest("Restart", "restart@example.com", "restart-password", null, null, new BigDecimal("10000"))).clientId();
             var orders = app.getBean(OrderService.class);
             var request = new SubmitOrderRequest("AAPL", "BUY", BigDecimal.ONE, "stock", "MARKET", null);
             long settled = orders.submitOrder(client, request, "settled").orderId();
@@ -56,7 +56,7 @@ class RestartRecoveryIT {
             assertEquals(2, db.queryForObject("SELECT count(*) FROM orders", Integer.class));
             assertEquals(2, db.queryForObject("SELECT count(*) FROM fills", Integer.class));
             assertEquals(new BigDecimal("9798.0000"), db.queryForObject("SELECT cash_balance FROM client_accounts", BigDecimal.class));
-            assertEquals(3, db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class));
+            assertEquals(10, db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class));
         }
     }
 
@@ -64,6 +64,7 @@ class RestartRecoveryIT {
         return new SpringApplicationBuilder(RocketTradingApplication.class, Quotes.class).run(
                 "--server.port=0", "--spring.datasource.url=" + postgres.getJdbcUrl(),
                 "--spring.datasource.username=" + postgres.getUsername(), "--spring.datasource.password=" + postgres.getPassword(),
-                "--trading.worker.enabled=" + worker, "--trading.worker.delay-ms=100", "--spring.main.banner-mode=off");
+                "--trading.worker.enabled=" + worker, "--trading.worker.delay-ms=100", "--spring.main.banner-mode=off",
+                "--fixtures.password=", "--catalog.sync.enabled=false");
     }
 }

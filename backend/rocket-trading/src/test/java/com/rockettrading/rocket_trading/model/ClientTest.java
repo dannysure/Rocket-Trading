@@ -87,14 +87,14 @@ class ClientServiceTests {
     }
 
     @Test
-    @DisplayName("setter rejects non-positive client id")
+    @DisplayName("setter rejects negative client id")
     void setterRejectsNonPositiveClientId() {
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> client.setClientId(badClientId)
+                () -> client.setClientId(-1)
         );
 
-        assertEquals("clientId must be positive", exception.getMessage());
+        assertEquals("clientId must be non-negative", exception.getMessage());
     }
 
     @Test

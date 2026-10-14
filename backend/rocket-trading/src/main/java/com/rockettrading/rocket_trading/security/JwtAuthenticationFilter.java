@@ -1,6 +1,5 @@
 package com.rockettrading.rocket_trading.security;
 
-import com.rockettrading.rocket_trading.model.Session;
 import com.rockettrading.rocket_trading.repository.SessionRepository;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -10,6 +9,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
@@ -44,8 +44,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             AuthenticatedClient authenticatedClient = jwtService.parseToken(header.substring(7));
-            Session session = sessionRepository.findBySessionId(authenticatedClient.sessionId());
-            if (session == null || !session.isActive()) {
+                if (!sessionRepository.isActiveSessionForClient(
+                    authenticatedClient.sessionId(), authenticatedClient.clientId())) {
                 authenticationEntryPoint.commence(
                         request,
                         response,
@@ -57,7 +57,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                     authenticatedClient,
                     null,
-                    List.of()
+                    List.of(new SimpleGrantedAuthority("ROLE_" + authenticatedClient.role()))
             );
             SecurityContextHolder.getContext().setAuthentication(authentication);
             filterChain.doFilter(request, response);

@@ -55,4 +55,37 @@ class FauxnanceQuoteClientTest {
                     () -> client.mapQuoteResponse(payload, "AAPL"));
         }
     }
+
+    @Test
+    void acceptsAndFlagsProviderStaleQuotesWhenAllowed() throws Exception {
+        FauxnanceProperties properties = new FauxnanceProperties();
+        properties.setAllowStale(true);
+        FauxnanceQuoteClient client = new FauxnanceQuoteClient(mock(RestClient.class), properties);
+
+        Quote quote = client.mapQuoteResponse(
+                objectMapper.readTree("{\"price\":100,\"stale\":true,\"timestamp\":\"2026-01-01T00:00:00Z\"}"), "AAPL");
+
+        assertTrue(quote.isProviderStale());
+        assertEquals(Instant.parse("2026-01-01T00:00:00Z"), quote.getCapturedAt());
+    }
+
+    @Test
+    void historyLeavesOutSyntheticAndOutOfRangeCandles() throws Exception {
+        FauxnanceQuoteClient client = new FauxnanceQuoteClient(mock(RestClient.class), new FauxnanceProperties());
+        String response = """
+                {"data": {"symbol": "AAPL", "candles": [
+                  {"date": "2026-09-30", "close": 300.0, "synthetic": false},
+                  {"date": "2026-10-09", "open": 340.1, "high": 345.3, "low": 339.0, "close": 344.0, "synthetic": false},
+                  {"date": "2026-10-12", "close": 342.5},
+                  {"date": "2026-10-13", "close": 330.27, "synthetic": true}
+                ]}}
+                """;
+
+        var candles = client.mapCandles(objectMapper.readTree(response), java.time.LocalDate.parse("2026-10-01"));
+
+        assertEquals(2, candles.size());
+        assertEquals(java.time.LocalDate.parse("2026-10-09"), candles.get(0).date());
+        assertEquals(0, new java.math.BigDecimal("345.3").compareTo(candles.get(0).high()));
+        assertEquals(java.time.LocalDate.parse("2026-10-12"), candles.get(1).date());
+    }
 }

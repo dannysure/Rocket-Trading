@@ -95,7 +95,7 @@ cd backend/rocket-trading
 In another terminal:
 
 ```sh
-cd frontend/rocket-trading-ui
+cd frontend
 npm ci
 npm start
 ```
@@ -105,8 +105,9 @@ started from its module directory. If you change `DB_NAME` or `DB_PORT`, also se
 for a native backend, for example `jdbc:postgresql://localhost:5436/my_database`.
 Compose always sets its own internal database URL using the `db` service hostname.
 
-Angular's development proxy and the container's nginx proxy both forward `/api` to Spring.
-Do not run native API/UI servers and their Compose counterparts on the same ports together.
+The checked-in Angular app calls Spring directly at `http://localhost:8081/api/v1`; the backend's
+CORS configuration already allows `http://localhost:4200`. Do not run native API/UI servers and
+their Compose counterparts on the same ports together.
 
 ## Run the tests
 
@@ -130,20 +131,14 @@ stubbed. Testcontainers 1.21.4 supports current Docker API versions.
 Frontend tests and production build:
 
 ```sh
-cd frontend/rocket-trading-ui
+cd frontend
 npm ci
-npm run test:ci
+npm test -- --watch=false
 npm run build
 ```
 
-`test:ci` needs Chrome. Set `CHROME_BIN` if it is not found automatically. On macOS:
-
-```sh
-CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm run test:ci
-```
-
-For browser tests or a deterministic local demo, stop the normal UI/API stack first.
-From the root:
+For a deterministic local demo, stop the normal UI/API stack first and start the isolated
+fixture-price stack from the root:
 
 ```sh
 docker compose -p rocket-trading-e2e -f docker-compose.yml -f compose.e2e.yaml up --build -d
@@ -152,23 +147,8 @@ docker compose -p rocket-trading-e2e -f docker-compose.yml -f compose.e2e.yaml u
 This uses a separate project/volume and a test-only HTTP quote server (bid 100, ask 101).
 It exposes the same UI/API ports, but does not expose its database port. Wait for startup
 in `docker compose -p rocket-trading-e2e -f docker-compose.yml -f compose.e2e.yaml logs api`.
-Then:
-
-```sh
-cd frontend/rocket-trading-ui
-npm ci
-npx playwright install chromium
-npm run test:e2e
-```
-
-Afterward, from the root:
-
-```sh
-docker compose -p rocket-trading-e2e -f docker-compose.yml -f compose.e2e.yaml down
-```
-
-Tests create fresh clients on each browser run. Their volume is intentionally distinct
-from the normal `rocket-trading` project. Never treat fixture prices as market prices.
+The current checked-in Angular frontend does not yet include a dedicated end-to-end script,
+so use the live dashboard in the browser for manual smoke testing against this stack.
 
 GitHub Actions runs Java verification, frontend unit tests/build and browser tests on PRs.
 The Jenkinsfile runs the same layers; its agent needs Java 21, Node 22, Docker and Chrome,
@@ -200,7 +180,7 @@ someone reviews it. Automatic baselining is disabled. Before adopting that datab
 1. Stop the old application/writers and take a backup. Restore the backup into a separate
    PostgreSQL instance and work on that copy first. Keep the original volume intact.
 2. Compare its schema to `V1__trading_schema.sql`. The older `database/schema.sql` prototype
-   differs from the Java schema and must not be blindly baselined. Inspect existing
+   (since removed from the repository; see git history) differs from the Java schema and must not be blindly baselined. Inspect existing
    duplicate client emails, direct-trading accounts and multiple fills per order; V2 adds
    constraints that deliberately fail on incompatible data instead of deleting it.
 3. Inspect triggers. V2 refuses to proceed if `trigger_fill_execution` exists. A reviewed
@@ -219,8 +199,8 @@ Old timestamp-without-time-zone values are interpreted as UTC by V2; verify that
 against any historical data before baselining. The migration test covers a V1-compatible
 schema adoption and proves client records survive. It does not certify arbitrary legacy data.
 
-The old Python API and `database/br09_fill_atomicity.sql` are not part of this startup path.
-Do not apply that trigger script to the new trading database: Java already performs settlement.
+The old Python API and `database/br09_fill_atomicity.sql` trigger script have been removed.
+Never reinstall that trigger on the trading database: Java already performs settlement.
 
 ## Troubleshooting
 

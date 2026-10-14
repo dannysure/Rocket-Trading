@@ -3,6 +3,7 @@ package com.rockettrading.rocket_trading.controller;
 import com.rockettrading.rocket_trading.dto.common.ApiResponse;
 import com.rockettrading.rocket_trading.dto.order.FillResponse;
 import com.rockettrading.rocket_trading.dto.order.OrderResponse;
+import com.rockettrading.rocket_trading.dto.order.OrderTimelineResponse;
 import com.rockettrading.rocket_trading.dto.order.SubmitOrderRequest;
 import com.rockettrading.rocket_trading.security.AuthenticatedClient;
 import com.rockettrading.rocket_trading.service.OrderService;
@@ -58,5 +59,12 @@ public class OrderController {
     public ResponseEntity<ApiResponse<List<FillResponse>>> listFills(@PathVariable long orderId, Authentication authentication) {
         AuthenticatedClient client = (AuthenticatedClient) authentication.getPrincipal();
         return ResponseEntity.ok(ApiResponse.success(orderService.listFills(client.clientId(), orderId)));
+    }
+
+    @GetMapping("/orders/{orderId}/timeline")
+    public ResponseEntity<ApiResponse<OrderTimelineResponse>> getOrderTimeline(@PathVariable long orderId,
+                                                                               Authentication authentication) {
+        AuthenticatedClient client = (AuthenticatedClient) authentication.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.success(orderService.getOrderTimeline(client.clientId(), orderId)));
     }
 }

@@ -9,6 +9,9 @@ public class FauxnanceProperties {
     private String stockPath;
     private String cryptoPath;
     private long maxAgeSeconds;
+    // FX rates are published as daily closes, so they need a wider window than intraday prices
+    private long fxMaxAgeSeconds = 345600;
+    private boolean allowStale;
 
     public String getBaseUrl() {
         return baseUrl;
@@ -48,5 +51,21 @@ public class FauxnanceProperties {
 
     public void setMaxAgeSeconds(long maxAgeSeconds) {
         this.maxAgeSeconds = maxAgeSeconds;
+    }
+
+    public long getFxMaxAgeSeconds() {
+        return fxMaxAgeSeconds;
+    }
+
+    public void setFxMaxAgeSeconds(long fxMaxAgeSeconds) {
+        this.fxMaxAgeSeconds = fxMaxAgeSeconds;
+    }
+
+    public boolean isAllowStale() {
+        return allowStale;
+    }
+
+    public void setAllowStale(boolean allowStale) {
+        this.allowStale = allowStale;
     }
 }
