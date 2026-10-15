@@ -49,6 +49,26 @@ describe('App', () => {
     expect(link?.textContent).toContain('Perps');
   });
 
+  it('opens the account menu when the username is clicked', () => {
+    TestBed.inject(SessionStore).set({ clientId: 1, name: 'Test User', email: 't@example.com', token: 't', role: 'CLIENT', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    const fixture = TestBed.createComponent(NavHeaderComponent);
+    fixture.detectChanges();
+
+    const username = (fixture.nativeElement as HTMLElement).querySelector('.who') as HTMLButtonElement;
+    username.click();
+    fixture.detectChanges();
+
+    const menu = (fixture.nativeElement as HTMLElement).querySelector('.account-menu');
+    expect(menu?.textContent).toContain('Test User');
+    expect(menu?.textContent).toContain('t@example.com');
+    expect(menu?.textContent).toContain('KYC not verified');
+    expect(menu?.textContent).toContain('Profile settings');
+    expect(menu?.textContent).toContain('Tax documents');
+    expect(menu?.textContent).toContain('Security settings');
+    expect(menu?.textContent).toContain('Help and support');
+    expect(menu?.textContent).toContain('Sign out');
+  });
+
   it('treats an expired session as signed out', () => {
     const sessions = TestBed.inject(SessionStore);
     sessions.set({ clientId: 1, name: 'T', email: 't@example.com', token: 't', role: 'CLIENT', expiresAt: new Date(Date.now() - 1000).toISOString() });
