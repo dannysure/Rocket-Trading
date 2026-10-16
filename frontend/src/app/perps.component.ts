@@ -1,6 +1,6 @@
 import { Component, InjectionToken, OnDestroy, OnInit, PLATFORM_ID, computed, inject, signal } from '@angular/core';
 import { DatePipe, isPlatformBrowser } from '@angular/common';
-import { EMPTY, Observable, Subject, Subscription, catchError, finalize, interval, merge, switchMap } from 'rxjs';
+import { EMPTY, Observable, Subject, Subscription, catchError, finalize, interval, merge, switchMap, timer } from 'rxjs';
 import { errorMessage } from './api.service';
 import { NavHeaderComponent } from './nav-header.component';
 import { money, newIdempotencyKey, price, quantity, signedMoney, trendClass } from './format';
@@ -9,6 +9,8 @@ import { OrderSide, buildDepthLadder, formatCountdown, maxOrderSize, previewOrde
 
 /** How often prices and the account refresh; 0 disables polling (tests). */
 export const PERPS_POLL_MS = new InjectionToken<number>('PERPS_POLL_MS', { factory: () => 3000 });
+
+const LIVE_SESSION_MS = 10 * 60_000;
 
 const MAX_MARK_SAMPLES = 900;
 const CHART_WIDTH = 1000;
@@ -23,6 +25,14 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
     <main class="page wide">
       <h1 class="page-title">Perpetuals</h1>
       <p class="page-subtitle">Go long or short on crypto with leverage. Isolated margin: a position can only lose the margin you put on it.</p>
+
+      <div class="live-controls">
+        <button type="button" class="btn btn-outline" data-testid="live-toggle" (click)="liveActive() ? stopLiveUpdates() : startLiveUpdates()">
+          {{ liveActive() ? 'Stop live updates' : 'Start live updates' }}
+        </button>
+        <span role="status" data-testid="live-status">{{ liveActive() ? 'Live · pauses in ' + liveRemaining() : 'Dormant · live updates paused' }}</span>
+        <p class="hint">Live updates run for 10 minutes. Background liquidation checks continue while dormant.</p>
+      </div>
 
       <div class="pill-row markets" role="tablist" aria-label="Perpetual markets">
         @for (m of markets(); track m.symbol) {
@@ -161,7 +171,7 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
           @if (orderSuccess()) { <p class="alert info" role="status">{{ orderSuccess() }}</p> }
 
           <button type="button" class="btn btn-block submit" data-testid="submit-order" [class.sell]="side() === 'SELL'"
-                  [disabled]="submitting() || !ticker()" (click)="submit()">{{ submitting() ? 'Placing order…' : submitLabel() }}</button>
+                  [disabled]="submitting() || !ticker() || !liveActive()" (click)="submit()">{{ submitting() ? 'Placing order…' : submitLabel() }}</button>
 
           <dl class="summary">
             <div><dt>Liquidation price</dt><dd class="num">{{ preview() ? fmt.price(preview()!.liquidationPrice, currency()) : '—' }}</dd></div>
@@ -200,7 +210,7 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
                         <td class="right num">{{ fmt.price(p.liquidationPrice, currency()) }}</td>
                         <td class="right num">{{ fmt.money(p.margin, currency()) }}</td>
                         <td class="right num {{ fmt.trendClass(-p.cumulativeFunding) }}">{{ fmt.signedMoney(-p.cumulativeFunding, currency()) }}</td>
-                        <td class="right"><button type="button" class="btn btn-outline small-btn" data-testid="close-position" [disabled]="submitting()" (click)="closePosition(p)">Close</button></td>
+                        <td class="right"><button type="button" class="btn btn-outline small-btn" data-testid="close-position" [disabled]="submitting() || !liveActive()" (click)="closePosition(p)">Close</button></td>
                       </tr>
                     } @empty {
                       <tr><td colspan="10" class="empty">No open positions yet.</td></tr>
@@ -269,6 +279,8 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
     </main>
   `,
   styles: [`
+    .live-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+    .live-controls .hint { flex-basis: 100%; margin: 0; }
     .wide { max-width: 1440px; }
     .markets { margin-bottom: 16px; }
     .pill-lev { opacity: .7; margin-left: 4px; }
@@ -335,6 +347,13 @@ export class PerpsComponent implements OnInit, OnDestroy {
   private readonly pollMs = inject(PERPS_POLL_MS);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
   private readonly subscriptions = new Subscription();
+  private liveSubscriptions = new Subscription();
+  private liveUntil = 0;
+  readonly liveActive = signal(false);
+  readonly liveRemaining = computed(() => {
+    const seconds = Math.max(0, Math.ceil((this.liveUntil - this.now()) / 1000));
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  });
   private readonly refresh$ = new Subject<void>();
   private readonly tickerReload$ = new Subject<void>();
   // Reused only when retrying the same order after an uncertain failure, so a retry can't fill twice
@@ -441,28 +460,55 @@ export class PerpsComponent implements OnInit, OnDestroy {
       error: (error) => this.tickerError.set(errorMessage(error, 'Perpetual markets could not be loaded.')),
     }));
 
+  }
+
+  startLiveUpdates(): void {
+    if (!this.isBrowser || this.liveActive()) return;
+    this.liveSubscriptions = new Subscription();
+    this.liveUntil = Date.now() + LIVE_SESSION_MS;
+    this.now.set(Date.now());
+    this.liveActive.set(true);
     const polling = this.isBrowser && this.pollMs > 0;
-    const refreshes = polling ? merge(this.refresh$, interval(this.pollMs)) : this.refresh$;
-    this.subscriptions.add(this.latest(refreshes, () => this.perps.account()).subscribe((account) => this.account.set(account)));
-    this.subscriptions.add(this.latest(refreshes, () => this.perps.orders()).subscribe((orders) => this.orders.set(orders ?? [])));
-    this.subscriptions.add(this.latest(refreshes, () => this.perps.funding()).subscribe((funding) => this.funding.set(funding ?? [])));
-    this.subscriptions.add(merge(refreshes, this.tickerReload$).pipe(
+    const ticks = polling ? merge(this.refresh$, interval(this.pollMs)) : this.refresh$;
+    const refreshes = ticks.pipe(switchMap(() => {
+      if (Date.now() >= this.liveUntil) {
+        this.stopLiveUpdates();
+        return EMPTY;
+      }
+      return [undefined];
+    }));
+    this.liveSubscriptions.add(this.latest(refreshes, () => this.perps.account()).subscribe((account) => this.account.set(account)));
+    this.liveSubscriptions.add(this.latest(refreshes, () => this.perps.orders()).subscribe((orders) => this.orders.set(orders ?? [])));
+    this.liveSubscriptions.add(this.latest(refreshes, () => this.perps.funding()).subscribe((funding) => this.funding.set(funding ?? [])));
+    this.liveSubscriptions.add(merge(refreshes, this.tickerReload$).pipe(
       switchMap(() => this.perps.ticker(this.selectedSymbol()).pipe(catchError((error) => {
         this.tickerError.set(errorMessage(error, 'The price feed is unavailable right now.'));
         return EMPTY;
       }))),
     ).subscribe((ticker) => this.onTicker(ticker)));
     if (polling) {
-      this.subscriptions.add(interval(1000).subscribe(() => this.now.set(Date.now())));
+      this.liveSubscriptions.add(interval(1000).subscribe(() => this.now.set(Date.now())));
     }
+    this.liveSubscriptions.add(timer(LIVE_SESSION_MS).subscribe(() => this.stopLiveUpdates()));
     this.refresh();
   }
 
+  stopLiveUpdates(): void {
+    this.liveSubscriptions.unsubscribe();
+    this.liveActive.set(false);
+  }
+
   ngOnDestroy(): void {
+    this.stopLiveUpdates();
     this.subscriptions.unsubscribe();
   }
 
   refresh(): void {
+    if (!this.liveActive()) return;
+    if (Date.now() >= this.liveUntil) {
+      this.stopLiveUpdates();
+      return;
+    }
     this.refresh$.next();
   }
 
@@ -473,7 +519,7 @@ export class PerpsComponent implements OnInit, OnDestroy {
     this.marks.set([]);
     this.sizeInput.set('');
     this.orderError.set('');
-    this.tickerReload$.next();
+    if (this.liveActive() && Date.now() < this.liveUntil) this.tickerReload$.next();
   }
 
   setSide(side: OrderSide): void {
@@ -536,6 +582,10 @@ export class PerpsComponent implements OnInit, OnDestroy {
   }
 
   private placeOrder(request: PerpOrderRequest, onFilled?: () => void): void {
+    if (!this.liveActive() || Date.now() >= this.liveUntil) {
+      this.stopLiveUpdates();
+      return;
+    }
     const payload = JSON.stringify(request);
     if (this.pendingOrder?.payload !== payload) {
       this.pendingOrder = { payload, key: newIdempotencyKey() };
