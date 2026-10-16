@@ -7,7 +7,6 @@ import { CompleteProfileComponent } from './complete-profile.component';
 import { DashboardComponent } from './dashboard.component';
 import { TradeComponent } from './trade.component';
 import { BlotterComponent } from './blotter.component';
-import { PerpsComponent } from './perps.component';
 import { InsightsComponent } from './insights.component';
 import { OpsComponent } from './ops.component';
 
@@ -44,7 +43,8 @@ export const routes: Routes = [
   { path: 'dashboard', component: DashboardComponent, canActivate: [requireRole('CLIENT')], title: 'Dashboard · Rocket Trading' },
   { path: 'trade', component: TradeComponent, canActivate: [requireRole('CLIENT')], title: 'Markets · Rocket Trading' },
   { path: 'blotter', component: BlotterComponent, canActivate: [requireRole('CLIENT')], title: 'Blotter · Rocket Trading' },
-  { path: 'perps', component: PerpsComponent, canActivate: [requireRole('CLIENT')], title: 'Perpetuals · Rocket Trading' },
+  // Lazy: the perps page and its chart are only downloaded by clients who open it
+  { path: 'perps', loadComponent: () => import('./perps.component').then((m) => m.PerpsComponent), canActivate: [requireRole('CLIENT')], title: 'Perpetuals · Rocket Trading' },
 
   { path: 'insights', component: InsightsComponent, canActivate: [requireRole('ANALYST', 'OPERATIONS')], title: 'Insights · Rocket Trading' },
   { path: 'ops', component: OpsComponent, canActivate: [requireRole('OPERATIONS')], title: 'Trade lookup · Rocket Trading' },

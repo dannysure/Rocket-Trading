@@ -35,9 +35,9 @@ describe('App', () => {
     expect(sessions.homeRoute()).toBe('/ops');
   });
 
-  it('serves the perpetuals page to clients behind the client guard', () => {
+  it('serves the perpetuals page to clients behind the client guard', async () => {
     const route = routes.find((r) => r.path === 'perps');
-    expect(route?.component).toBe(PerpsComponent);
+    expect(await route?.loadComponent?.()).toBe(PerpsComponent);
     expect(route?.canActivate?.length).toBe(1);
   });
 

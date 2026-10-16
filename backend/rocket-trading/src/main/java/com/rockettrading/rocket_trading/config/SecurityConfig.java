@@ -6,6 +6,7 @@ import com.rockettrading.rocket_trading.security.JwtAuthenticationFilter;
 import com.rockettrading.rocket_trading.security.RestAuthenticationEntryPoint;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -48,6 +49,8 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler))
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(authorize -> authorize
+                        // An async dispatch continues a request that was already authorized (the perps price stream)
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/sign-in").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/providers").permitAll()
                         .requestMatchers("/api/v1/oauth2/authorization/**").permitAll()

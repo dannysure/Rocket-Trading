@@ -14,4 +14,5 @@ public class PerpMarketRecord {
     private String quoteCurrency;
     private Integer maxLeverage;
     private BigDecimal takerFeeRate;
+    private BigDecimal skewScale;
 }

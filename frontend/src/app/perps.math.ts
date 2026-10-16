@@ -43,6 +43,7 @@ export interface DepthLadder {
   tick: number;
 }
 
+/** time is the interval start in Unix seconds. */
 export interface Candle {
   time: number;
   open: number;
@@ -100,21 +101,59 @@ export function formatCountdown(ms: number): string {
   return `${pad(Math.floor(totalSeconds / 3600))}:${pad(Math.floor((totalSeconds % 3600) / 60))}:${pad(totalSeconds % 60)}`;
 }
 
-/** Buckets mark-price samples into OHLC candles; samples must be in time order. */
-export function toCandles(samples: { time: number; price: number }[], bucketMs: number): Candle[] {
-  const candles: Candle[] = [];
-  for (const { time, price } of samples) {
-    const bucket = Math.floor(time / bucketMs) * bucketMs;
-    const last = candles[candles.length - 1];
-    if (last && last.time === bucket) {
-      last.high = Math.max(last.high, price);
-      last.low = Math.min(last.low, price);
-      last.close = price;
-    } else {
-      candles.push({ time: bucket, open: price, high: price, low: price, close: price });
-    }
-  }
-  return candles;
+/**
+ * Folds a live price into the newest candle: extends it within its interval, or opens the next one.
+ * Returns null for a price older than that candle, which must not rewrite closed history.
+ */
+export function mergeTick(last: Candle | null, timeSeconds: number, price: number, intervalSeconds: number): Candle | null {
+  const bucket = Math.floor(timeSeconds / intervalSeconds) * intervalSeconds;
+  if (!last || bucket > last.time) return { time: bucket, open: price, high: price, low: price, close: price };
+  if (bucket < last.time) return null;
+  return { ...last, high: Math.max(last.high, price), low: Math.min(last.low, price), close: price };
+}
+
+export interface MarkedPosition {
+  side: PerpSide;
+  size: number;
+  entryPrice: number;
+  margin: number;
+}
+
+/** Position value, PnL and return on margin at a mark price, as the backend computes them. */
+export function markToMarket(position: MarkedPosition, markPrice: number) {
+  const direction = position.side === 'LONG' ? 1 : -1;
+  const unrealizedPnl = (markPrice - position.entryPrice) * position.size * direction;
+  return {
+    markPrice,
+    positionValue: markPrice * position.size,
+    unrealizedPnl,
+    returnOnEquity: position.margin > 0 ? unrealizedPnl / position.margin : null,
+  };
+}
+
+export interface FillEstimateInput {
+  side: OrderSide;
+  // Size the order will actually fill (reduce-only orders are capped at the position)
+  size: number;
+  bid: number;
+  ask: number;
+  premium: number;
+  skew: number;
+  skewScale: number;
+  maxPremium: number;
+}
+
+/**
+ * Expected fill price, mirroring the backend: the index bid or ask plus the average premium over the
+ * open-interest skew before and after the order. The ticker's bid/ask already carry the current premium.
+ */
+export function estimateFillPrice(input: FillEstimateInput): number {
+  const { side, size, skew, skewScale, maxPremium } = input;
+  const touch = side === 'BUY' ? input.ask : input.bid;
+  if (skewScale <= 0) return touch;
+  const premiumAt = (value: number) => Math.max(-maxPremium, Math.min(maxPremium, value / skewScale));
+  const after = premiumAt(skew + (side === 'BUY' ? size : -size));
+  return (touch / (1 + input.premium)) * (1 + (premiumAt(skew) + after) / 2);
 }
 
 /**

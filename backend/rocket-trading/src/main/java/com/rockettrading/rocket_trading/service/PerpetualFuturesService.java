@@ -2,6 +2,7 @@ package com.rockettrading.rocket_trading.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rockettrading.rocket_trading.config.PerpsProperties;
 import com.rockettrading.rocket_trading.dto.perps.*;
 import com.rockettrading.rocket_trading.exception.ApiException;
 import com.rockettrading.rocket_trading.exception.ConflictException;
@@ -20,12 +21,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
 /**
  * Isolated-margin perpetual futures. Collateral is the DIRECT_TRADING cash balance; every mutation locks
- * that account row first (as spot settlement does), then the position row, so the two never deadlock.
+ * that account row first (as spot settlement does), then the market row (fills only), then the position row,
+ * so they never deadlock.
+ *
+ * <p>Prices come from the spot index plus a premium set by this exchange's long/short open-interest imbalance
+ * (see {@link PerpetualFuturesCalculator}); funding charges that premium to the crowded side.
  */
 @Service
 @RequiredArgsConstructor
@@ -38,7 +44,9 @@ public class PerpetualFuturesService {
     private final PerpFundingRepository fundingRepository;
     private final ClientAccountRepository clientAccountRepository;
     private final AuditLogRepository auditLogRepository;
-    private final QuoteService quoteService;
+    private final PerpIndexPrices indexPrices;
+    private final CoinbaseCandleClient candleClient;
+    private final PerpsProperties properties;
     private final Validator validator;
     private final ObjectMapper objectMapper;
     private final ObjectProvider<RateLimitService> rateLimitService;
@@ -49,30 +57,61 @@ public class PerpetualFuturesService {
         return marketRepository.findActive().stream()
                 .map(market -> new PerpMarketResponse(market.getMarketSymbol(), market.getBaseAsset(),
                         market.getUnderlyingSymbol(), market.getQuoteCurrency(), market.getMaxLeverage(),
-                        market.getTakerFeeRate(), spec(market).maintenanceMarginRate()))
+                        market.getTakerFeeRate(), spec(market).maintenanceMarginRate(), plain(market.getSkewScale()),
+                        PerpetualFuturesCalculator.MAX_PREMIUM))
                 .toList();
     }
 
     public PerpTickerResponse getTicker(String symbol) {
         PerpMarketRecord market = requireMarket(symbol);
-        Quote quote = fetchQuote(market);
-        BigDecimal mark = markPrice(quote);
+        return ticker(market, openInterest(market.getMarketId()));
+    }
+
+    /** Tickers for every active market whose price is available right now. */
+    public List<PerpTickerResponse> listTickers() {
+        Map<Long, PerpOpenInterestRecord> openInterest = openInterestByMarket();
+        List<PerpTickerResponse> tickers = new ArrayList<>();
+        for (PerpMarketRecord market : marketRepository.findActive()) {
+            try {
+                tickers.add(ticker(market, openInterest(openInterest, market.getMarketId())));
+            } catch (ApiException | IllegalArgumentException unavailable) {
+                log.debug("No ticker for {}: {}", market.getMarketSymbol(), unavailable.getMessage());
+            }
+        }
+        return tickers;
+    }
+
+    private PerpTickerResponse ticker(PerpMarketRecord market, PerpOpenInterestRecord openInterest) {
+        MarketPrice price = marketPrice(market, openInterest);
+        Quote quote = price.index().quote();
         PerpMarketSpec spec = spec(market);
+        Duration interval = properties.fundingInterval();
         return new PerpTickerResponse(
                 market.getMarketSymbol(),
-                mark,
-                plain(quote.getPrice()),
-                plain(quote.getBid()),
-                plain(quote.getAsk()),
-                calculator.hourlyFundingRate(mark, quote.getPrice()),
-                calculator.nextFundingTime(Instant.now()),
-                plain(marketRepository.openInterest(market.getMarketId())),
+                plain(price.mark()),
+                plain(price.indexPrice()),
+                plain(calculator.withPremium(quote.getBid(), price.premium())),
+                plain(calculator.withPremium(quote.getAsk(), price.premium())),
+                plain(price.premium()),
+                calculator.fundingRate(price.premium(), interval),
+                properties.getFundingIntervalMinutes(),
+                calculator.nextFundingTime(Instant.now(), interval),
+                plain(openInterest.total()),
+                plain(openInterest.getLongSize()),
+                plain(openInterest.getShortSize()),
                 spec.maxLeverage(),
                 spec.takerFeeRate(),
                 spec.maintenanceMarginRate(),
                 quote.getCapturedAt(),
-                quote.isProviderStale()
+                !price.index().live() || quote.isProviderStale()
         );
+    }
+
+    public List<PerpCandleResponse> getCandles(String symbol, int intervalSeconds) {
+        PerpMarketRecord market = requireMarket(symbol);
+        String product = CoinbaseCandleClient.productId(market.getUnderlyingSymbol());
+        if (product == null) throw new NotFoundException("PRICE_HISTORY_UNAVAILABLE", "No price history for " + market.getMarketSymbol());
+        return candleClient.candles(product, intervalSeconds);
     }
 
     public PerpAccountResponse getAccount(long clientId) {
@@ -81,6 +120,7 @@ public class PerpetualFuturesService {
 
         Map<Long, PerpMarketRecord> marketsById = new HashMap<>();
         marketRepository.findAll().forEach(market -> marketsById.put(market.getMarketId(), market));
+        Map<Long, PerpOpenInterestRecord> openInterest = openInterestByMarket();
         Map<Long, Optional<BigDecimal>> marks = new HashMap<>();
 
         BigDecimal totalMargin = BigDecimal.ZERO;
@@ -88,7 +128,8 @@ public class PerpetualFuturesService {
         List<PerpPositionResponse> responses = new ArrayList<>();
         for (PerpPositionRecord record : positionRepository.findOpenByClientId(clientId)) {
             PerpMarketRecord market = marketsById.get(record.getMarketId());
-            BigDecimal mark = marks.computeIfAbsent(record.getMarketId(), id -> markIfAvailable(market)).orElse(null);
+            BigDecimal mark = marks.computeIfAbsent(record.getMarketId(),
+                    id -> markIfAvailable(market, openInterest(openInterest, id))).orElse(null);
             PerpPosition position = toDomain(record);
             totalMargin = totalMargin.add(position.margin());
             if (mark != null) unrealized = unrealized.add(position.unrealizedPnl(mark));
@@ -155,10 +196,16 @@ public class PerpetualFuturesService {
                 throw new IllegalArgumentException("Currency conversion is not supported");
             }
             PerpSide side = PerpSide.fromOrderSide(request.side());
-            Quote quote = fetchQuote(market);
-            // Market orders take liquidity: buys lift the ask, sells hit the bid
-            BigDecimal price = side == PerpSide.LONG ? quote.getAsk() : quote.getBid();
+            marketRepository.lockMarket(market.getMarketId());
             PerpPositionRecord current = positionRepository.lockOpenPosition(account.getAccountId(), market.getMarketId());
+            Quote quote = indexPrices.quote(market).quote();
+            // Market orders take liquidity: buys lift the index ask, sells hit the index bid, and both pay the
+            // average premium over the skew before and after the fill
+            BigDecimal filledSize = request.reduceOnly() && current != null && !current.getPositionSide().equals(side.name())
+                    ? request.size().min(current.getSize()) : request.size();
+            BigDecimal fillPremium = calculator.fillPremium(openInterest(market.getMarketId()).skew(),
+                    side == PerpSide.LONG ? filledSize : filledSize.negate(), market.getSkewScale());
+            BigDecimal price = calculator.withPremium(side == PerpSide.LONG ? quote.getAsk() : quote.getBid(), fillPremium);
             PerpFillOutcome outcome = fillEngine.fill(spec(market), current == null ? null : toDomain(current),
                     side, request.size(), price, request.leverage(), request.reduceOnly());
 
@@ -200,15 +247,28 @@ public class PerpetualFuturesService {
         return fundingRepository.findByClientId(clientId).stream().map(PerpFundingResponse::from).toList();
     }
 
-    /** Charges one funding interval to one position. Returns false if it was already charged or has closed. */
+    /** Start of the funding interval in progress; positions held over it are charged once for it. */
+    public Instant currentFundingTime() {
+        return calculator.fundingTime(Instant.now(), properties.fundingInterval());
+    }
+
+    public List<PerpPositionRecord> positionsDueFunding(Instant fundingTime) {
+        return positionRepository.findPositionsDueFunding(fundingTime);
+    }
+
+    /**
+     * Charges one funding interval to one position at the rate the open-interest skew sets now. Returns false if
+     * it was already charged, has closed, or was opened after the funding time.
+     */
     @Transactional
     public boolean settleFunding(long positionId, long ownerClientId, Instant fundingTime) {
         requireLockedAccount(ownerClientId);
         PerpPositionRecord record = positionRepository.lockOpenPositionById(positionId);
-        if (record == null) return false;
-        Quote quote = fetchQuote(marketRepository.findById(record.getMarketId()));
-        BigDecimal mark = markPrice(quote);
-        BigDecimal rate = calculator.hourlyFundingRate(mark, quote.getPrice());
+        if (record == null || record.getOpenedAt().isAfter(fundingTime)) return false;
+        PerpMarketRecord market = marketRepository.findById(record.getMarketId());
+        MarketPrice price = marketPrice(market, openInterest(market.getMarketId()));
+        BigDecimal mark = price.mark();
+        BigDecimal rate = calculator.fundingRate(price.premium(), properties.fundingInterval());
         PerpFunding funding = toDomain(record).applyFunding(mark, rate);
 
         PerpFundingRecord payment = new PerpFundingRecord();
@@ -239,7 +299,7 @@ public class PerpetualFuturesService {
         PerpPositionRecord record = positionRepository.lockOpenPositionById(positionId);
         if (record == null) return false;
         PerpMarketRecord market = marketRepository.findById(record.getMarketId());
-        BigDecimal mark = markPrice(fetchQuote(market));
+        BigDecimal mark = marketPrice(market, openInterest(market.getMarketId())).mark();
         PerpPosition position = toDomain(record);
         if (!position.isLiquidatable(mark, spec(market).maintenanceMarginRate())) return false;
 
@@ -320,22 +380,38 @@ public class PerpetualFuturesService {
         return state;
     }
 
-    private Optional<BigDecimal> markIfAvailable(PerpMarketRecord market) {
+    private Optional<BigDecimal> markIfAvailable(PerpMarketRecord market, PerpOpenInterestRecord openInterest) {
         try {
-            return Optional.of(markPrice(fetchQuote(market)));
+            return Optional.of(plain(marketPrice(market, openInterest).mark()));
         } catch (ApiException | IllegalArgumentException unavailable) {
             log.warn("Mark price unavailable for {}: {}", market.getMarketSymbol(), unavailable.getMessage());
             return Optional.empty();
         }
     }
 
-    private Quote fetchQuote(PerpMarketRecord market) {
-        return quoteService.fetchCurrentQuote(market.getUnderlyingSymbol(), market.getUnderlyingMarket());
+    /** Index is the spot quote mid; mark adds the premium the open-interest skew sets. */
+    private MarketPrice marketPrice(PerpMarketRecord market, PerpOpenInterestRecord openInterest) {
+        PerpIndexPrices.IndexQuote index = indexPrices.quote(market);
+        BigDecimal indexPrice = calculator.indexPrice(index.quote().getBid(), index.quote().getAsk());
+        BigDecimal premium = calculator.premium(openInterest.skew(), market.getSkewScale());
+        return new MarketPrice(index, indexPrice, premium, calculator.withPremium(indexPrice, premium));
     }
 
-    // Mark is the quote mid; the provider's last price serves as the oracle/index price
-    private BigDecimal markPrice(Quote quote) {
-        return plain(calculator.calculatePerpPrice(quote.getBid(), quote.getAsk()));
+    private record MarketPrice(PerpIndexPrices.IndexQuote index, BigDecimal indexPrice, BigDecimal premium, BigDecimal mark) {
+    }
+
+    private Map<Long, PerpOpenInterestRecord> openInterestByMarket() {
+        Map<Long, PerpOpenInterestRecord> byMarket = new HashMap<>();
+        marketRepository.openInterest().forEach(record -> byMarket.put(record.getMarketId(), record));
+        return byMarket;
+    }
+
+    private PerpOpenInterestRecord openInterest(long marketId) {
+        return openInterest(openInterestByMarket(), marketId);
+    }
+
+    private static PerpOpenInterestRecord openInterest(Map<Long, PerpOpenInterestRecord> byMarket, long marketId) {
+        return byMarket.getOrDefault(marketId, PerpOpenInterestRecord.none(marketId));
     }
 
     private PerpMarketRecord requireMarket(String symbol) {
