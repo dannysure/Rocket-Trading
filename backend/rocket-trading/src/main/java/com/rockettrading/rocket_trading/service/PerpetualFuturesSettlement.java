@@ -18,15 +18,20 @@ public class PerpetualFuturesSettlement {
     private static final Logger log = LoggerFactory.getLogger(PerpetualFuturesSettlement.class);
     private final PerpetualFuturesService service;
 
+    /** Charges the interval in progress to every position held over its start that has not paid it yet. */
+    public int settleCurrentFunding() {
+        return settleFunding(service.currentFundingTime());
+    }
+
     /** Returns how many positions were charged for this funding time. */
     public int settleFunding(Instant fundingTime) {
         int charged = 0;
-        for (PerpPositionRecord owner : service.openPositionOwners()) {
+        for (PerpPositionRecord owner : service.positionsDueFunding(fundingTime)) {
             try {
                 if (service.settleFunding(owner.getPositionId(), owner.getClientId(), fundingTime)) charged++;
             } catch (RuntimeException exception) {
-                log.error("Funding at {} rolled back for perp position {}. It will not be retried for this interval.",
-                        fundingTime, owner.getPositionId(), exception);
+                log.warn("Funding at {} rolled back for perp position {}; it is retried on the next check: {}",
+                        fundingTime, owner.getPositionId(), exception.getMessage());
             }
         }
         return charged;

@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.time.Instant;
 import java.util.List;
 
 @Mapper
@@ -60,4 +61,14 @@ public interface PerpPositionRepository {
 
     @Select("select position_id, client_id from perp_positions where position_status = 'OPEN' order by position_id")
     List<PerpPositionRecord> findOpenPositionOwners();
+
+    /** Positions open since before this funding time that have not been charged for it yet. */
+    @Select("""
+            select p.position_id, p.client_id from perp_positions p
+            where p.position_status = 'OPEN' and p.opened_at <= #{fundingTime}
+              and not exists (select 1 from perp_funding_payments f
+                              where f.position_id = p.position_id and f.funding_time = #{fundingTime})
+            order by p.position_id
+            """)
+    List<PerpPositionRecord> findPositionsDueFunding(Instant fundingTime);
 }
