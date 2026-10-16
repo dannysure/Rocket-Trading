@@ -10,6 +10,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -17,12 +19,15 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Pushes every market's ticker to subscribed clients as server-sent events. One snapshot is built per tick and
- * shared by all subscribers, on a thread of its own so a slow client never delays order or settlement work.
+ * Pushes every market's ticker to subscribed clients as server-sent events: on a steady tick for price moves, and
+ * straight after any fill or liquidation commits so open interest, premium and funding update the moment a trade
+ * lands. One snapshot is built per push and shared by all subscribers, on a thread of its own so a slow client
+ * never delays order or settlement work.
  */
 @Component
 public class PerpMarketStream {
@@ -69,6 +74,17 @@ public class PerpMarketStream {
         if (snapshot != null && !send(emitter, snapshot)) return emitter;
         subscribers.add(emitter);
         return emitter;
+    }
+
+    /** A trade changed open interest: push it now rather than on the next tick. */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onMarketChanged(PerpMarketChanged change) {
+        if (subscribers.isEmpty() || executor.isShutdown()) return;
+        try {
+            executor.execute(this::broadcast);
+        } catch (RejectedExecutionException shuttingDown) {
+            // The application is stopping; there is no one left to tell
+        }
     }
 
     int subscriberCount() {

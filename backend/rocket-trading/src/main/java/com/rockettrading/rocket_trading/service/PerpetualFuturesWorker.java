@@ -11,9 +11,12 @@ import org.springframework.stereotype.Component;
 public class PerpetualFuturesWorker {
     private final PerpetualFuturesSettlement settlement;
 
-    // Checked often, not just once at the interval start, so a funding charge that fails (no price, a restart)
-    // is retried until it succeeds; each position is charged at most once per interval
-    @Scheduled(fixedDelayString = "${trading.perps.funding-check-ms:30000}", initialDelayString = "${trading.perps.funding-check-ms:30000}")
+    /** Funding hits accounts on the hour (UTC) and nowhere else in it. */
+    public static final String FUNDING_SCHEDULE = "*/15 0-4 * * * *";
+
+    // Runs at hh:00:00, then every 15 seconds until hh:04:45 to retry any charge that failed (no price, a restart).
+    // Each position is charged at most once per hour, so the retries never charge twice.
+    @Scheduled(cron = FUNDING_SCHEDULE, zone = "UTC")
     public void settleFunding() {
         settlement.settleCurrentFunding();
     }

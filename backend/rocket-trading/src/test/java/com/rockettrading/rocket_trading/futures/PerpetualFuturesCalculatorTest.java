@@ -4,7 +4,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,7 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class PerpetualFuturesCalculatorTest {
 
     private final PerpetualFuturesCalculator calculator = new PerpetualFuturesCalculator();
-    private static final Duration HOUR = Duration.ofHours(1);
 
     @Test
     @DisplayName("index is the quote mid")
@@ -53,20 +51,21 @@ class PerpetualFuturesCalculatorTest {
     }
 
     @Test
-    @DisplayName("nothing is charged while longs and shorts balance")
-    void noFundingAtParity() {
-        assertMoney("0", calculator.fundingRate(bd("0"), HOUR));
+    @DisplayName("nothing is charged while the perp trades at spot")
+    void noFundingAtSpot() {
+        assertMoney("0", calculator.fundingRate(bd("81000"), bd("81000")));
     }
 
     @Test
-    @DisplayName("funding is the premium per 8 hours, paid pro rata per interval, so even a small imbalance is charged")
-    void fundingFollowsPremium() {
-        assertMoney("0.002", calculator.fundingRate(bd("0.002"), Duration.ofHours(8)));
-        assertMoney("0.00025", calculator.fundingRate(bd("0.002"), HOUR));
-        assertMoney("0.0000075", calculator.fundingRate(bd("0.0006"), Duration.ofMinutes(6)));
-        // shorts outweigh longs: negative, so shorts pay longs
-        assertMoney("-0.00125", calculator.fundingRate(bd("-0.01"), HOUR));
-        assertMoney("0.0000125", calculator.fundingRate(bd("0.0001"), HOUR));
+    @DisplayName("the hourly rate is how far the perp trades from spot, over 8 hours")
+    void fundingFollowsTheGapToSpot() {
+        // perp 0.2% over spot: longs pay 0.025% an hour
+        assertMoney("0.00025", calculator.fundingRate(bd("100.2"), bd("100")));
+        // perp 1% under spot: shorts pay longs 0.125% an hour
+        assertMoney("-0.00125", calculator.fundingRate(bd("99"), bd("100")));
+        // a 0.06% gap on BTC: 0.0075% an hour
+        assertMoney("0.000075", calculator.fundingRate(bd("81469.307273"), bd("81420.455")).setScale(6, java.math.RoundingMode.HALF_UP));
+        assertThrows(IllegalArgumentException.class, () -> calculator.fundingRate(bd("1"), bd("0")));
     }
 
     @Test
@@ -76,14 +75,12 @@ class PerpetualFuturesCalculatorTest {
     }
 
     @Test
-    @DisplayName("funding times are aligned to the interval")
+    @DisplayName("funding is due on the hour, UTC")
     void fundingTimes() {
         Instant now = Instant.parse("2026-10-14T14:47:55Z");
-        assertEquals(Instant.parse("2026-10-14T14:00:00Z"), calculator.fundingTime(now, HOUR));
-        assertEquals(Instant.parse("2026-10-14T15:00:00Z"), calculator.nextFundingTime(now, HOUR));
-        assertEquals(Instant.parse("2026-10-14T16:00:00Z"), calculator.nextFundingTime(Instant.parse("2026-10-14T15:00:00Z"), HOUR));
-        assertEquals(Instant.parse("2026-10-14T14:45:00Z"), calculator.fundingTime(now, Duration.ofMinutes(5)));
-        assertEquals(Instant.parse("2026-10-14T14:50:00Z"), calculator.nextFundingTime(now, Duration.ofMinutes(5)));
+        assertEquals(Instant.parse("2026-10-14T14:00:00Z"), calculator.fundingTime(now));
+        assertEquals(Instant.parse("2026-10-14T15:00:00Z"), calculator.nextFundingTime(now));
+        assertEquals(Instant.parse("2026-10-14T16:00:00Z"), calculator.nextFundingTime(Instant.parse("2026-10-14T15:00:00Z")));
     }
 
     private static BigDecimal bd(String value) {

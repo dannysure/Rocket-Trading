@@ -6,28 +6,11 @@ import java.time.Duration;
 
 @ConfigurationProperties(prefix = "trading.perps")
 public class PerpsProperties {
-    // Funding is charged at the start of every interval (aligned to the Unix epoch, so 60 is on the hour, UTC)
-    private int fundingIntervalMinutes = 60;
     // How often live prices are pushed to clients on the perps stream
     private long streamIntervalMs = 500;
     // Fallback (Fauxnance) quotes and failures are reused this long so a stream outage cannot exhaust its quota
     private long fallbackCacheMs = 10_000;
     private final PriceFeed priceFeed = new PriceFeed();
-
-    public Duration fundingInterval() {
-        return Duration.ofMinutes(fundingIntervalMinutes);
-    }
-
-    public int getFundingIntervalMinutes() {
-        return fundingIntervalMinutes;
-    }
-
-    public void setFundingIntervalMinutes(int fundingIntervalMinutes) {
-        if (fundingIntervalMinutes < 1 || fundingIntervalMinutes > 1440) {
-            throw new IllegalArgumentException("trading.perps.funding-interval-minutes must be between 1 and 1440");
-        }
-        this.fundingIntervalMinutes = fundingIntervalMinutes;
-    }
 
     public long getStreamIntervalMs() {
         return streamIntervalMs;

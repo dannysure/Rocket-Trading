@@ -19,16 +19,16 @@ export interface PerpMarket {
 
 export interface PerpTicker {
   symbol: string;
-  // Index plus the premium the long/short open-interest imbalance sets
+  // Perp price: spot plus the premium the long/short open-interest imbalance sets
   markPrice: number;
   // Spot index (Coinbase mid)
   oraclePrice: number;
   bid: number;
   ask: number;
+  // (mark - spot) / spot
   premium: number;
-  // Per funding interval, e.g. 0.0000125 = 0.00125% per hour; positive means longs pay shorts
+  // Charged on the hour: premium / 8, e.g. 0.000075 = 0.0075%; positive means longs pay shorts
   fundingRate: number;
-  fundingIntervalMinutes: number;
   nextFundingAt: string;
   openInterest: number;
   longOpenInterest: number;
@@ -114,6 +114,11 @@ export class PerpsApi {
 
   markets(): Observable<PerpMarket[]> {
     return this.http.get<ApiResponse<PerpMarket[]>>(`${this.base}/markets`).pipe(map((r) => r.data));
+  }
+
+  /** Every market's ticker, as the live stream pushes them; used to fill the page before live updates start. */
+  tickers(): Observable<PerpTicker[]> {
+    return this.http.get<ApiResponse<PerpTicker[]>>(`${this.base}/tickers`).pipe(map((r) => r.data));
   }
 
   /** Spot index candles, oldest first; intervalSeconds is 60, 300, 900 or 3600. */

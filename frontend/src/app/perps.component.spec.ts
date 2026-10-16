@@ -16,8 +16,8 @@ const ticker: PerpTicker = {
   bid: 100,
   ask: 101,
   premium: 0.0005,
+  // (100.5 - 100.4) / 100.4 / 8, rounded
   fundingRate: 0.0000125,
-  fundingIntervalMinutes: 60,
   nextFundingAt: new Date(now + 12 * 60_000).toISOString(),
   openInterest: 3.5,
   longOpenInterest: 2,
@@ -64,6 +64,7 @@ function createApi(account: PerpAccount = flatAccount, funding: PerpFunding[] = 
       { symbol: 'BTC-PERP', baseAsset: 'BTC', underlyingSymbol: 'X:BTC-USD', quoteCurrency: 'USD', maxLeverage: 40, takerFeeRate: 0.00045, maintenanceMarginRate: 0.0125, skewScale: 1000, maxPremium: 0.01 },
       { symbol: 'ETH-PERP', baseAsset: 'ETH', underlyingSymbol: 'X:ETH-USD', quoteCurrency: 'USD', maxLeverage: 25, takerFeeRate: 0.00045, maintenanceMarginRate: 0.02, skewScale: 30000, maxPremium: 0.01 },
     ])),
+    tickers: vi.fn(() => of([ticker, ethTicker])),
     candles: vi.fn((_symbol: string, _interval: number) => of(history)),
     account: vi.fn(() => of<PerpAccount>(account)),
     orders: vi.fn(() => of([])),
@@ -162,10 +163,13 @@ describe('PerpsComponent', () => {
     vi.useRealTimers();
   });
 
-  it('starts dormant: shows the account and history once, but streams and polls nothing until the button is clicked', async () => {
+  it('starts dormant: shows the market, account and history once, but streams and polls nothing until the button is clicked', async () => {
     await render(flatAccount, false);
     expect(text('[data-testid="live-status"]')).toContain('Dormant');
     expect(stream.tickers).not.toHaveBeenCalled();
+    expect(api.tickers).toHaveBeenCalledTimes(1);
+    expect(text('[data-testid="mark-price"]')).toContain('100.5');
+    expect(text('[data-testid="open-interest-split"]')).toBe('Longs 2 · Shorts 1.5');
     expect(api.account).toHaveBeenCalledTimes(1);
     expect(api.orders).toHaveBeenCalledTimes(1);
     expect(api.funding).toHaveBeenCalledTimes(1);
@@ -267,23 +271,39 @@ describe('PerpsComponent', () => {
     expect(el().querySelector('app-nav-header')).toBeTruthy();
   });
 
-  it('shows the market header with mark, oracle, premium, funding and long/short open interest', async () => {
+  it('shows the market header with perp and spot prices, the gap, funding and long/short open interest', async () => {
     await render();
     expect(text('[data-testid="market-symbol"]')).toContain('BTC-PERP');
     expect(text('[data-testid="mark-price"]')).toContain('100.5');
     expect(text('[data-testid="oracle-price"]')).toContain('100.4');
-    expect(text('[data-testid="premium"]')).toBe('+0.050%');
+    expect(text('[data-testid="premium"]')).toBe('+$0.10 · +0.050%');
     expect(text('[data-testid="funding-rate"]')).toContain('0.0013%');
     expect(text('[data-testid="funding-countdown"]')).toMatch(/00:1[12]:\d\d/);
     expect(text('[data-testid="open-interest"]')).toContain('3.5');
-    expect(text('[data-testid="open-interest-split"]')).toBe('L 2 · S 1.5');
+    expect(text('[data-testid="open-interest-split"]')).toBe('Longs 2 · Shorts 1.5');
+    expect(el().textContent).toContain('Funding (1h)');
   });
 
-  it('labels the funding interval from the ticker', async () => {
+  it('tells traders which side is crowded and that the other side earns funding', async () => {
     await render();
-    push([{ ...ticker, fundingIntervalMinutes: 5 }]);
+    expect(text('[data-testid="skew-note"]')).toBe(
+      'Longs outweigh shorts by 0.5 BTC, so the perp trades 0.050% above spot. Longs pay shorts 0.0013% on the hour, so going short earns funding.');
+    push([{ ...ticker, longOpenInterest: 1, shortOpenInterest: 3, premium: -0.002, markPrice: 100.2, fundingRate: -0.00025 }]);
     await settle();
-    expect(el().textContent).toContain('Funding (5m)');
+    expect(text('[data-testid="skew-note"]')).toBe(
+      'Shorts outweigh longs by 2 BTC, so the perp trades 0.200% below spot. Shorts pay longs 0.0250% on the hour, so going long earns funding.');
+    push([{ ...ticker, longOpenInterest: 1, shortOpenInterest: 1, premium: 0, markPrice: 100.4, fundingRate: 0 }]);
+    await settle();
+    expect(text('[data-testid="skew-note"]')).toBe('Longs and shorts balance, so the perp trades at spot and no funding is due.');
+  });
+
+  it('updates open interest the moment the stream reports a trade', async () => {
+    await render();
+    push([{ ...ticker, openInterest: 5.5, longOpenInterest: 4, shortOpenInterest: 1.5, premium: 0.0025 }]);
+    await settle();
+    expect(text('[data-testid="open-interest"]')).toContain('5.5');
+    expect(text('[data-testid="open-interest-split"]')).toBe('Longs 4 · Shorts 1.5');
+    expect(text('[data-testid="premium"]')).toContain('+0.250%');
   });
 
   it('switches markets from the market pills using the streamed prices and that market\'s history', async () => {

@@ -32,6 +32,12 @@ public class PerpetualFuturesController {
         return ResponseEntity.ok(ApiResponse.success(perpetualFuturesService.listMarkets()));
     }
 
+    /** Every active market's ticker in one call, as the stream pushes them. */
+    @GetMapping("/tickers")
+    public ResponseEntity<ApiResponse<List<PerpTickerResponse>>> listTickers() {
+        return ResponseEntity.ok(ApiResponse.success(perpetualFuturesService.listTickers()));
+    }
+
     @GetMapping("/markets/{symbol}/ticker")
     public ResponseEntity<ApiResponse<PerpTickerResponse>> getTicker(@PathVariable String symbol) {
         return ResponseEntity.ok(ApiResponse.success(perpetualFuturesService.getTicker(symbol)));

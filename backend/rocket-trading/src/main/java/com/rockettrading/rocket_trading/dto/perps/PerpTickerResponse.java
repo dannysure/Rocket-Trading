@@ -4,8 +4,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
- * oraclePrice is the spot index; markPrice and bid/ask carry this exchange's premium over it, which comes from the
- * long/short open-interest imbalance. fundingRate applies per funding interval; positive means longs pay shorts.
+ * oraclePrice is the spot index; markPrice (the perp price) and bid/ask carry this exchange's premium over it, which
+ * comes from the long/short open-interest imbalance. fundingRate is charged on the hour, (mark - spot) / spot / 8;
+ * positive means longs pay shorts.
  */
 public record PerpTickerResponse(
         String symbol,
@@ -15,7 +16,6 @@ public record PerpTickerResponse(
         BigDecimal ask,
         BigDecimal premium,
         BigDecimal fundingRate,
-        int fundingIntervalMinutes,
         Instant nextFundingAt,
         BigDecimal openInterest,
         BigDecimal longOpenInterest,

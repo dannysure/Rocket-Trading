@@ -30,12 +30,14 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -51,7 +53,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {"trading.worker.enabled=false", "spring.kafka.enabled=false", "spring.redis.enabled=false", "reporting.refresh-ms=3600000", "fixtures.password=", "catalog.sync.enabled=false",
         "quotes.fauxnance.max-age-seconds=900",
         // The live feed is wired up but points at a closed port, so prices fall back to the mocked provider
-        "trading.perps.price-feed.enabled=true", "trading.perps.price-feed.websocket-url=ws://127.0.0.1:9"})
+        "trading.perps.price-feed.enabled=true", "trading.perps.price-feed.websocket-url=ws://127.0.0.1:9",
+        // No timed pushes, so the stream test sees only the push a trade causes
+        "trading.perps.stream-interval-ms=3600000"})
 @AutoConfigureMockMvc
 class PerpetualFuturesIT {
     @Container @ServiceConnection
@@ -114,7 +118,6 @@ class PerpetualFuturesIT {
                 .andExpect(jsonPath("$.data.bid").value(100))
                 .andExpect(jsonPath("$.data.ask").value(102))
                 .andExpect(jsonPath("$.data.fundingRate").value(0))
-                .andExpect(jsonPath("$.data.fundingIntervalMinutes").value(60))
                 .andExpect(jsonPath("$.data.nextFundingAt").exists())
                 .andExpect(jsonPath("$.data.openInterest").value(0))
                 // Only the live stream counts as current; the mocked provider is the fallback
@@ -131,7 +134,7 @@ class PerpetualFuturesIT {
                 .andExpect(jsonPath("$.data.fillPrice").value(100.15));
 
         quoteAt("100", "102", "100");
-        // Skew 1 BTC long -> premium 0.1%: mark 101 * 1.001; funding is that premium over 8 hours, charged hourly
+        // Skew 1 BTC long -> premium 0.1%: mark 101 * 1.001; funding (mark - spot) / spot / 8 an hour
         mvc.perform(get("/api/v1/perps/markets/BTC-PERP/ticker").header("Authorization", bearer()))
                 .andExpect(jsonPath("$.data.premium").value(0.001))
                 .andExpect(jsonPath("$.data.markPrice").value(101.101))
@@ -367,6 +370,30 @@ class PerpetualFuturesIT {
         assertEquals("ETH-PERP", tickers.get(1).path("symbol").asText());
 
         mvc.perform(get("/api/v1/perps/stream")).andExpect(status().isUnauthorized());
+    }
+
+    @Test void everyTradeIsPushedToTheStreamAsSoonAsItCommits() throws Exception {
+        MvcResult stream = mvc.perform(get("/api/v1/perps/stream").header("Authorization", bearer()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        assertTrue(stream.getResponse().getContentAsString().contains("\"openInterest\":0"));
+
+        order("BUY", "2", 10, false, "pushed").andExpect(status().isCreated());
+
+        // The timed push is an hour away, so this update can only come from the trade itself
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            String events = stream.getResponse().getContentAsString();
+            assertTrue(events.contains("\"longOpenInterest\":2"), events);
+            assertTrue(events.contains("\"premium\":0.002"), events);
+        });
+    }
+
+    @Test void tickersListsEveryMarket() throws Exception {
+        mvc.perform(get("/api/v1/perps/tickers").header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(2)))
+                .andExpect(jsonPath("$.data[0].symbol").value("BTC-PERP"))
+                .andExpect(jsonPath("$.data[1].symbol").value("ETH-PERP"));
     }
 
     @Test void candlesComeFromTheCoinbaseProductForTheMarket() throws Exception {

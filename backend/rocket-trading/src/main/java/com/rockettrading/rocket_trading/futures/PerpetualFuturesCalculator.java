@@ -4,23 +4,26 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 
 /**
- * Pricing and funding for perps whose premium over the spot index comes from this exchange's open interest.
+ * Pricing and funding for perps whose price on this exchange is pushed away from spot by its own open interest.
  *
  * <p>The skew (long minus short open interest) sets the premium: {@code premium = clamp(skew / skewScale, ±1%)},
- * and {@code mark = index * (1 + premium)}. Funding charges the crowded side the premium spread over eight hours,
- * so holding the side that pushes the mark away from spot costs exactly that gap, and nothing is charged while
- * longs and shorts balance. That is the incentive that pulls the mark back to the index: the light side is paid
- * to grow until the skew, and with it the premium, closes.
+ * and the perp (mark) price is {@code spot * (1 + premium)}. Every hour, on the hour, funding charges the side
+ * that pushed the perp away from spot {@code (mark - spot) / spot / 8} of its position value and pays it to the
+ * other side; nothing is charged while the perp trades at spot. Taking the light side is therefore paid, which
+ * draws the traders who offset the exchange's own exposure to the skew and pulls the perp back to spot.
  */
 public class PerpetualFuturesCalculator {
     public static final BigDecimal MAX_PREMIUM = new BigDecimal("0.01");
     static final int PRICE_SCALE = 8;
     private static final int RATIO_SCALE = 10;
     private static final BigDecimal TWO = BigDecimal.valueOf(2);
-    private static final long SECONDS_PER_RATE_PERIOD = Duration.ofHours(8).toSeconds();
+    // The premium is charged over eight hourly payments
+    private static final BigDecimal FUNDING_PAYMENTS_PER_PREMIUM = BigDecimal.valueOf(8);
+    public static final Duration FUNDING_INTERVAL = Duration.ofHours(1);
 
     /** Spot index from a quote: the mid of its bid and ask. */
     public BigDecimal indexPrice(BigDecimal bid, BigDecimal ask) {
@@ -52,36 +55,32 @@ public class PerpetualFuturesCalculator {
     }
 
     /**
-     * Funding rate for one interval: the premium, quoted per 8 hours and paid pro rata per interval, so it is
-     * proportional to the open-interest imbalance. Positive means longs pay shorts. The premium cap bounds it at
-     * 1% per 8 hours.
+     * Hourly funding rate from how far the perp trades from spot: {@code (mark - spot) / spot / 8}. Positive means
+     * the perp is above spot and longs pay shorts; negative means shorts pay longs. The premium cap bounds it at
+     * 0.125% an hour.
      */
-    public BigDecimal fundingRate(BigDecimal premium, Duration interval) {
-        requireNonNull(premium, "premium");
-        long seconds = Objects.requireNonNull(interval, "interval").toSeconds();
-        if (seconds <= 0) throw new IllegalArgumentException("interval must be positive");
-        return premium.multiply(BigDecimal.valueOf(seconds))
-                .divide(BigDecimal.valueOf(SECONDS_PER_RATE_PERIOD), RATIO_SCALE, RoundingMode.HALF_UP)
+    public BigDecimal fundingRate(BigDecimal markPrice, BigDecimal spotPrice) {
+        BigDecimal spot = requireNonNull(spotPrice, "spotPrice");
+        if (spot.signum() <= 0) throw new IllegalArgumentException("spotPrice must be positive");
+        return requireNonNull(markPrice, "markPrice").subtract(spot)
+                .divide(spot.multiply(FUNDING_PAYMENTS_PER_PREMIUM), RATIO_SCALE, RoundingMode.HALF_UP)
                 .stripTrailingZeros();
     }
 
-    /** Signed payment for one interval; positive when a long of this size pays. */
+    /** Signed payment for one hour; positive when a long of this size pays. */
     public BigDecimal fundingPayment(BigDecimal positionSize, BigDecimal markPrice, BigDecimal fundingRate) {
         return requireNonNull(positionSize, "positionSize")
                 .multiply(requireNonNull(markPrice, "markPrice"))
                 .multiply(requireNonNull(fundingRate, "fundingRate"));
     }
 
-    /** Start of the funding interval containing now; intervals are aligned to the Unix epoch (so hourly is on the hour, UTC). */
-    public Instant fundingTime(Instant now, Duration interval) {
-        long seconds = Objects.requireNonNull(interval, "interval").toSeconds();
-        if (seconds <= 0) throw new IllegalArgumentException("interval must be positive");
-        long epoch = Objects.requireNonNull(now, "now").getEpochSecond();
-        return Instant.ofEpochSecond(Math.floorDiv(epoch, seconds) * seconds);
+    /** The hour (UTC) containing now: positions held over it pay or receive funding once for it. */
+    public Instant fundingTime(Instant now) {
+        return Objects.requireNonNull(now, "now").truncatedTo(ChronoUnit.HOURS);
     }
 
-    public Instant nextFundingTime(Instant now, Duration interval) {
-        return fundingTime(now, interval).plus(interval);
+    public Instant nextFundingTime(Instant now) {
+        return fundingTime(now).plus(FUNDING_INTERVAL);
     }
 
     private static BigDecimal requireNonNull(BigDecimal value, String name) {

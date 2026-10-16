@@ -24,6 +24,13 @@ describe('PerpsApi', () => {
     expect(markets).toEqual([{ symbol: 'BTC-PERP' }]);
   });
 
+  it('reads every market\'s ticker', () => {
+    let tickers: unknown;
+    perps.tickers().subscribe((data) => (tickers = data));
+    http.expectOne(`${api}/tickers`).flush({ data: [{ symbol: 'BTC-PERP' }] });
+    expect(tickers).toEqual([{ symbol: 'BTC-PERP' }]);
+  });
+
   it('requests candles for a market and interval', () => {
     let candles: unknown;
     perps.candles('BTC-PERP', 300).subscribe((data) => (candles = data));

@@ -46,12 +46,12 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
           <h2 data-testid="market-symbol">{{ selectedSymbol() }}</h2>
         </div>
         <dl class="stats">
-          <div><dt title="Oracle price plus the premium set by the long/short open-interest imbalance">Mark</dt><dd class="num" data-testid="mark-price">{{ fmt.price(ticker()?.markPrice, currency()) }}</dd></div>
-          <div><dt title="Spot index: the live Coinbase mid price">Oracle</dt><dd class="num" data-testid="oracle-price">{{ fmt.price(ticker()?.oraclePrice, currency()) }}</dd></div>
-          <div><dt title="How far the mark is from the oracle; positive while longs outweigh shorts">Premium</dt>
-            <dd class="num" data-testid="premium" [class]="fmt.trendClass(ticker()?.premium)">{{ signedRate(ticker()?.premium) }}</dd></div>
+          <div><dt title="Mark price: spot plus the premium set by the long/short open-interest imbalance. Positions are valued and liquidated at this price.">Perp price</dt><dd class="num" data-testid="mark-price">{{ fmt.price(ticker()?.markPrice, currency()) }}</dd></div>
+          <div><dt title="Live Coinbase mid price">Spot price</dt><dd class="num" data-testid="oracle-price">{{ fmt.price(ticker()?.oraclePrice, currency()) }}</dd></div>
+          <div><dt title="How far the perp trades from spot; positive while longs outweigh shorts">Perp vs spot</dt>
+            <dd class="num" data-testid="premium" [class]="fmt.trendClass(ticker()?.premium)">{{ premiumText() }}</dd></div>
           <div>
-            <dt [title]="'Rate per ' + fundingInterval() + ', set by the open-interest imbalance. The bigger side pays the smaller one, which pulls the mark back to the oracle.'">Funding ({{ fundingInterval() }}) / next in</dt>
+            <dt title="Charged on the hour: (perp - spot) / spot / 8. The side that pushed the perp away from spot pays the other side.">Funding (1h) / next in</dt>
             <dd class="num">
               <span data-testid="funding-rate" [class]="fundingClass()">{{ rate(ticker()?.fundingRate) }}</span>
               <span class="muted" data-testid="funding-countdown"> · {{ countdown() }}</span>
@@ -59,9 +59,10 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
           </div>
           <div><dt title="Total open position size across all traders, long and short">Open interest</dt>
             <dd class="num"><span data-testid="open-interest">{{ fmt.quantity(ticker()?.openInterest) }} {{ baseAsset() }}</span>
-              @if (ticker(); as t) { <span class="oi-split muted" data-testid="open-interest-split">L {{ fmt.quantity(t.longOpenInterest) }} · S {{ fmt.quantity(t.shortOpenInterest) }}</span> }</dd></div>
+              @if (ticker(); as t) { <span class="oi-split muted" data-testid="open-interest-split">Longs {{ fmt.quantity(t.longOpenInterest) }} · Shorts {{ fmt.quantity(t.shortOpenInterest) }}</span> }</dd></div>
           <div><dt>Spread</dt><dd class="num">{{ fmt.price(ladder()?.spread, currency()) }}</dd></div>
         </dl>
+        @if (skewNote(); as note) { <p class="skew-note" data-testid="skew-note">{{ note }}</p> }
         @if (ticker()?.delayed) { <span class="badge waiting" title="The live price stream is down; prices come from the slower backup provider">Delayed price</span> }
         @if (tickerError()) { <p class="alert error bar-alert" role="alert">{{ tickerError() }}</p> }
       </section>
@@ -241,7 +242,7 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
                         <td class="right num {{ fmt.trendClass(-f.payment) }}">{{ fmt.signedMoney(-f.payment, currency()) }}</td>
                       </tr>
                     } @empty {
-                      <tr><td colspan="7" class="empty">No funding payments yet. Positions held at the start of each funding interval ({{ fundingInterval() }}) pay or receive funding.</td></tr>
+                      <tr><td colspan="7" class="empty">No funding payments yet. Positions open on the hour pay or receive funding.</td></tr>
                     }
                   </tbody>
                 </table>
@@ -285,6 +286,7 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
     .grid > .card { margin-bottom: 0; min-width: 0; }
     .grid + .grid { margin-top: 24px; }
     .oi-split { display: block; font-size: 11px; font-weight: 500; margin-top: 2px; }
+    .skew-note { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--text-muted); }
     .chart-card .hint { margin: 10px 0 0; }
     .book { padding: 16px 0 12px; }
     .book .tabs, .book-note, .book .skeleton { padding: 0 16px; }
@@ -407,9 +409,22 @@ export class PerpsComponent implements OnInit, OnDestroy {
       return t ? sum - (p.side === 'LONG' ? 1 : -1) * p.size * t.markPrice * t.fundingRate : sum;
     }, 0);
   });
-  readonly fundingInterval = computed(() => {
-    const minutes = this.ticker()?.fundingIntervalMinutes ?? 60;
-    return minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
+  readonly premiumText = computed(() => {
+    const ticker = this.ticker();
+    if (!ticker) return '—';
+    return `${signedMoney(ticker.markPrice - ticker.oraclePrice, this.currency())} · ${this.signedRate(ticker.premium)}`;
+  });
+  // Says which side is crowded and that the other side is paid, which is what draws traders to offset the skew
+  readonly skewNote = computed(() => {
+    const ticker = this.ticker();
+    if (!ticker) return null;
+    const skew = ticker.longOpenInterest - ticker.shortOpenInterest;
+    if (Math.abs(skew) < 1e-9) return 'Longs and shorts balance, so the perp trades at spot and no funding is due.';
+    const longsCrowded = skew > 0;
+    return `${longsCrowded ? 'Longs outweigh shorts' : 'Shorts outweigh longs'} by ${quantity(Math.abs(skew))} ${this.baseAsset()}, `
+      + `so the perp trades ${(Math.abs(ticker.premium) * 100).toFixed(3)}% ${longsCrowded ? 'above' : 'below'} spot. `
+      + `${longsCrowded ? 'Longs pay shorts' : 'Shorts pay longs'} ${this.rate(Math.abs(ticker.fundingRate))} on the hour, `
+      + `so going ${longsCrowded ? 'short' : 'long'} earns funding.`;
   });
   // An open position fixes the leverage: the backend rejects adds at a different leverage
   readonly leverage = computed(() => this.position()?.leverage ?? Math.min(this.chosenLeverage(), this.maxLeverage()));
@@ -505,6 +520,11 @@ export class PerpsComponent implements OnInit, OnDestroy {
     if (this.isBrowser) {
       this.candleReload$.next();
       this.loadAccountOnce();
+      // The market header is filled straight away; live updates then stream it
+      this.subscriptions.add(this.perps.tickers().pipe(catchError((error) => {
+        this.tickerError.set(errorMessage(error, 'Market data is unavailable right now.'));
+        return EMPTY;
+      })).subscribe((tickers) => { if (!this.liveActive()) this.onTickers(tickers ?? []); }));
     }
   }
 

@@ -2,7 +2,6 @@ package com.rockettrading.rocket_trading.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.rockettrading.rocket_trading.config.PerpsProperties;
 import com.rockettrading.rocket_trading.dto.perps.*;
 import com.rockettrading.rocket_trading.exception.ApiException;
 import com.rockettrading.rocket_trading.exception.ConflictException;
@@ -16,12 +15,12 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
@@ -46,7 +45,7 @@ public class PerpetualFuturesService {
     private final AuditLogRepository auditLogRepository;
     private final PerpIndexPrices indexPrices;
     private final CoinbaseCandleClient candleClient;
-    private final PerpsProperties properties;
+    private final ApplicationEventPublisher events;
     private final Validator validator;
     private final ObjectMapper objectMapper;
     private final ObjectProvider<RateLimitService> rateLimitService;
@@ -85,7 +84,7 @@ public class PerpetualFuturesService {
         MarketPrice price = marketPrice(market, openInterest);
         Quote quote = price.index().quote();
         PerpMarketSpec spec = spec(market);
-        Duration interval = properties.fundingInterval();
+        Instant now = Instant.now();
         return new PerpTickerResponse(
                 market.getMarketSymbol(),
                 plain(price.mark()),
@@ -93,9 +92,8 @@ public class PerpetualFuturesService {
                 plain(calculator.withPremium(quote.getBid(), price.premium())),
                 plain(calculator.withPremium(quote.getAsk(), price.premium())),
                 plain(price.premium()),
-                calculator.fundingRate(price.premium(), interval),
-                properties.getFundingIntervalMinutes(),
-                calculator.nextFundingTime(Instant.now(), interval),
+                calculator.fundingRate(price.mark(), price.indexPrice()),
+                calculator.nextFundingTime(now),
                 plain(openInterest.total()),
                 plain(openInterest.getLongSize()),
                 plain(openInterest.getShortSize()),
@@ -229,6 +227,7 @@ public class PerpetualFuturesService {
             orderRepository.insert(order);
             audit("client_accounts", account.getAccountId(), clientId, Map.of("cash", account.getCashBalance()),
                     Map.of("cash", newCash, "perpOrderId", order.getPerpOrderId()));
+            events.publishEvent(new PerpMarketChanged(market.getMarketSymbol()));
         } catch (ApiException | IllegalArgumentException rejection) {
             order.setOrderStatus("REJECTED");
             order.setRejectionReason(rejection.getMessage());
@@ -247,9 +246,9 @@ public class PerpetualFuturesService {
         return fundingRepository.findByClientId(clientId).stream().map(PerpFundingResponse::from).toList();
     }
 
-    /** Start of the funding interval in progress; positions held over it are charged once for it. */
+    /** The current hour (UTC); positions held over its start are charged once for it. */
     public Instant currentFundingTime() {
-        return calculator.fundingTime(Instant.now(), properties.fundingInterval());
+        return calculator.fundingTime(Instant.now());
     }
 
     public List<PerpPositionRecord> positionsDueFunding(Instant fundingTime) {
@@ -257,8 +256,8 @@ public class PerpetualFuturesService {
     }
 
     /**
-     * Charges one funding interval to one position at the rate the open-interest skew sets now. Returns false if
-     * it was already charged, has closed, or was opened after the funding time.
+     * Charges one hour of funding to one position, at the rate set by how far the perp trades from spot now.
+     * Returns false if it was already charged, has closed, or was opened after the funding time.
      */
     @Transactional
     public boolean settleFunding(long positionId, long ownerClientId, Instant fundingTime) {
@@ -268,7 +267,7 @@ public class PerpetualFuturesService {
         PerpMarketRecord market = marketRepository.findById(record.getMarketId());
         MarketPrice price = marketPrice(market, openInterest(market.getMarketId()));
         BigDecimal mark = price.mark();
-        BigDecimal rate = calculator.fundingRate(price.premium(), properties.fundingInterval());
+        BigDecimal rate = calculator.fundingRate(mark, price.indexPrice());
         PerpFunding funding = toDomain(record).applyFunding(mark, rate);
 
         PerpFundingRecord payment = new PerpFundingRecord();
@@ -324,6 +323,7 @@ public class PerpetualFuturesService {
         liquidation.setFee(BigDecimal.ZERO);
         liquidation.setRealizedPnl(loss);
         orderRepository.insert(liquidation);
+        events.publishEvent(new PerpMarketChanged(market.getMarketSymbol()));
         audit("perp_positions", positionId, record.getClientId(), Map.of("status", "OPEN", "margin", position.margin()),
                 Map.of("status", "LIQUIDATED", "markPrice", mark, "perpOrderId", liquidation.getPerpOrderId()));
         return true;
