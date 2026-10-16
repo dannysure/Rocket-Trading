@@ -7,15 +7,23 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.Date;
 
 @Service
 public class JwtService {
+    private static final Logger log = LoggerFactory.getLogger(JwtService.class);
+    // Published in .env.example and old compose files, so anyone could sign tokens with it (9.3)
+    static final String PUBLISHED_DEVELOPMENT_SECRET = "change-me-development-jwt-secret-1234567890";
+
     private final JwtProperties jwtProperties;
+    private SecretKey signingKey;
 
     public JwtService(JwtProperties jwtProperties) {
         this.jwtProperties = jwtProperties;
@@ -53,10 +61,23 @@ public class JwtService {
         return new AuthenticatedClient(clientId, sessionId, email, role == null ? "CLIENT" : role);
     }
 
-    private SecretKey signingKey() {
+    private synchronized SecretKey signingKey() {
+        if (signingKey == null) {
+            signingKey = createSigningKey();
+        }
+        return signingKey;
+    }
+
+    private SecretKey createSigningKey() {
         String configuredSecret = jwtProperties.getSecret();
-        if (configuredSecret == null || configuredSecret.isBlank()) {
-            throw new IllegalStateException("JWT secret must be configured");
+        if (configuredSecret == null || configuredSecret.isBlank() || PUBLISHED_DEVELOPMENT_SECRET.equals(configuredSecret)) {
+            // Never sign with a guessable key. A random one is safe but lasts only until restart,
+            // so everyone signs in again and other services cannot verify tokens: set JWT_SECRET.
+            log.warn("JWT_SECRET is unset or the published development value; using a random signing key "
+                    + "for this run. Set JWT_SECRET (e.g. `openssl rand -base64 48`) so sessions survive restarts.");
+            byte[] random = new byte[64];
+            new SecureRandom().nextBytes(random);
+            return Keys.hmacShaKeyFor(random);
         }
 
         byte[] rawSecret = configuredSecret.getBytes(StandardCharsets.UTF_8);

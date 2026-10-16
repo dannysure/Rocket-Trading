@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // Redis is off too so a local instance can't serve cached orders between tests
 // Quote freshness is pinned because Spring also imports the developer's .env, which may widen it
 @SpringBootTest(properties = {"trading.worker.enabled=false", "spring.kafka.enabled=false", "spring.redis.enabled=false", "reporting.refresh-ms=3600000", "fixtures.password=", "catalog.sync.enabled=false",
-        "quotes.fauxnance.max-age-seconds=900", "quotes.fauxnance.fx-max-age-seconds=345600"})
+        "quotes.fauxnance.max-age-seconds=900", "quotes.fauxnance.fx-max-age-seconds=345600", "reporting.sync.settle-seconds=0"})
 @AutoConfigureMockMvc
 class TradingIntegrationIT {
     @Container @ServiceConnection
@@ -54,6 +54,9 @@ class TradingIntegrationIT {
         // Only this disposable container is reset; never use a developer database in tests.
         db.execute("TRUNCATE staff_access_log, client_watchlist, audit_logs, transactions, fills, orders, market_quotes, account_holdings, client_holdings, client_sessions, client_accounts, client_profiles RESTART IDENTITY CASCADE");
         db.update("UPDATE financial_instruments SET is_tradable = true");
+        // No reporting.datasource.url here, so the reporting copy is the "reporting" schema of this container
+        db.execute("TRUNCATE reporting.order_facts");
+        db.update("UPDATE reporting.sync_state SET last_audit_id = 0, synced_at = NULL");
         doAnswer(i -> quote(i.getArgument(0), "100", "101", Instant.now())).when(quotes).fetchQuote(anyString(), anyString());
         JsonNode session = registerAndSignIn("10000");
         token = session.path("accessToken").asText();
@@ -202,6 +205,20 @@ class TradingIntegrationIT {
         mvc.perform(get("/api/v1/orders").header("Authorization", bearer())).andExpect(status().isUnauthorized());
     }
 
+    @Test void signingOutEverywhereEndsEverySessionOfThatClientOnly() throws Exception {
+        JsonNode otherClient = registerAndSignIn("100");
+        String email = db.queryForObject("SELECT email_address FROM client_profiles WHERE client_id=?", String.class, clientId);
+        String secondDevice = signIn(email).path("accessToken").asText();
+
+        mvc.perform(post("/api/v1/auth/sign-out-everywhere").header("Authorization", bearer())).andExpect(status().isNoContent());
+
+        mvc.perform(get("/api/v1/orders").header("Authorization", bearer())).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/orders").header("Authorization", "Bearer " + secondDevice)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/orders").header("Authorization", "Bearer " + otherClient.path("accessToken").asText()))
+                .andExpect(status().isOk());
+        assertEquals(0, db.queryForObject("SELECT count(*) FROM client_sessions WHERE client_id=? AND expires_at > now()", Integer.class, clientId));
+    }
+
     @Test void validatesRequestsAndRequiresIdempotencyKey() throws Exception {
         for (String body : new String[]{"{\"symbol\":\"AAPL\",\"side\":\"BUY\"}", "{\"symbol\":\"AAPL\",\"side\":\"BUY\",\"quantity\":-1}",
                 "{\"symbol\":\"AAPL\",\"side\":\"BUY\",\"quantity\":1,\"orderType\":\"LIMIT\"}"}) {
@@ -273,7 +290,7 @@ class TradingIntegrationIT {
                 .andExpect(jsonPath("$.data.events.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(5)));
     }
 
-    @Test void reportingIsForInternalRolesAndReadsTheSnapshotNotLiveTables() throws Exception {
+    @Test void reportingIsForInternalRolesAndReadsTheReportingCopyNotLiveTables() throws Exception {
         long buyId = accepted("BUY", "2", "report-buy");
         service.executeOrder(buyId);
         long sellId = accepted("SELL", "1", "report-sell");
@@ -284,7 +301,7 @@ class TradingIntegrationIT {
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
         reporting.refresh();
-        // Placed after the snapshot: invisible to reporting until the next refresh
+        // Placed after the copy: invisible to reporting until the next sync
         accepted("BUY", "1", "after-snapshot");
 
         mvc.perform(get("/api/v1/reporting/overview").header("Authorization", "Bearer " + analyst))

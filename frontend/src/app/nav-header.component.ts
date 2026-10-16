@@ -42,6 +42,10 @@ import { money } from './format';
           </span>
         </span>
         <button type="button" class="sign-out" (click)="signOut()">Sign out</button>
+        <button type="button" class="sign-out-all" (click)="signOut(true)"
+                title="Ends your sessions on every device, for example if you think someone else has your password">
+          Sign out everywhere
+        </button>
       </div>
     </header>
   `,
@@ -77,6 +81,11 @@ import { money } from './format';
       padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: 36px;
     }
     .sign-out:hover { color: #fff; border-color: #5b82ff; }
+    .sign-out-all {
+      background: none; border: none; color: #c9d3ec; font-size: 12px; cursor: pointer;
+      text-decoration: underline; text-underline-offset: 3px; padding: 4px 0; min-height: 36px;
+    }
+    .sign-out-all:hover { color: #fff; }
     @media (max-width: 700px) {
       .nav { padding: 12px 16px; }
       .who-text { display: none; }
@@ -97,8 +106,8 @@ export class NavHeaderComponent {
   protected readonly roleLabel = computed(() =>
     this.sessions.role() === 'OPERATIONS' ? 'Trading operations' : 'Commercial analyst');
 
-  signOut(): void {
-    this.auth.signOut().subscribe({
+  signOut(everywhere = false): void {
+    (everywhere ? this.auth.signOutEverywhere() : this.auth.signOut()).subscribe({
       complete: () => this.router.navigate(['/login']),
       error: () => this.router.navigate(['/login']),
     });

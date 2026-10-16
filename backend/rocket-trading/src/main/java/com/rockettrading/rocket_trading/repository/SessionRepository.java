@@ -45,4 +45,13 @@ public interface SessionRepository {
             where session_id = #{sessionId}
             """)
     int updateExpiresAt(@Param("sessionId") long sessionId, @Param("expiresAt") Instant expiresAt);
+
+    /** Ends every live session the client has, e.g. after a lost device or leaked password (BR-03). */
+    @Update("""
+            update client_sessions
+            set expires_at = #{expiresAt}
+            where client_id = #{clientId}
+              and expires_at > #{expiresAt}
+            """)
+    int expireAllForClient(@Param("clientId") long clientId, @Param("expiresAt") Instant expiresAt);
 }

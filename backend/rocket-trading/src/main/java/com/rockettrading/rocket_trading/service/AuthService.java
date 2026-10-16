@@ -96,6 +96,11 @@ public class AuthService {
         sessionRepository.updateExpiresAt(authenticatedClient.sessionId(), Instant.EPOCH);
     }
 
+    /** Revokes all of the client's sessions, on every device, including the one making the request. */
+    public void signOutEverywhere(AuthenticatedClient authenticatedClient) {
+        sessionRepository.expireAllForClient(authenticatedClient.clientId(), Instant.EPOCH);
+    }
+
     @Transactional
     public ClientRegistrationResponse updateProfile(long clientId, UpdateProfileRequest request) {
         Client client = clientRepository.findById(clientId);
