@@ -85,6 +85,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /auth/sign-out-everywhere:
+    post:
+      tags: [Auth]
+      operationId: signOutEverywhere
+      summary: Expire every session of the authenticated client, on all devices (BR-03)
+      responses:
+        '204':
+          description: All sessions ended; no response body
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /quotes/{symbol}:
     get:
       tags: [Quotes]

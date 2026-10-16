@@ -16,6 +16,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -170,25 +172,19 @@ public class OrderService {
         return orderRepository.findByClientId(clientId).stream().map(OrderResponse::from).toList();
     }
 
+    /** The signed-in client's own order; this is also the ownership check for fills and the timeline (BR-02). */
     public OrderResponse getOrder(long clientId, long orderId) {
-        // Try cache first (30s TTL)
-        OrderResponse cached = orderCacheService.getIfAvailable() == null
-            ? null
-            : orderCacheService.getIfAvailable().getOrder(orderId);
+        OrderCacheService cache = orderCacheService.getIfAvailable();
+        OrderResponse cached = cache == null ? null : cache.getOrder(clientId, orderId);
         if (cached != null) {
             return cached;
         }
-        
-        // Cache miss: query database
         OrderRecord order = orderRepository.findByIdAndClientId(orderId, clientId);
         if (order == null) throw new NotFoundException("ORDER_NOT_FOUND", "Order was not found for the signed-in client");
-        
-        // Convert and cache result
         OrderResponse response = OrderResponse.from(order);
-        if (orderCacheService.getIfAvailable() != null) {
-            orderCacheService.getIfAvailable().cacheOrder(orderId, response);
+        if (cache != null) {
+            cache.cacheOrder(clientId, response);
         }
-        
         return response;
     }
 
@@ -348,22 +344,29 @@ public class OrderService {
         audit("orders", order.getOrderId(), order.getClientId(), Map.of("status", previous),
                 Map.of("status", status, "reason", reason == null ? "" : reason));
 
-        // Publish events for downstream consumers (workers, analytics, notifications)
+        // Publish events for downstream consumers (workers, analytics, notifications) once the change
+        // has committed: consumers never see an uncommitted status, and a slow or absent broker never
+        // holds the account lock (9.1/9.2). The order cache only holds final orders, so nothing to invalidate.
         if ("ACCEPTED".equals(status)) {
-            publishOrderAcceptedEvent(order);
+            afterCommit(() -> publishOrderAcceptedEvent(order));
         } else if ("FILLED".equals(status)) {
-            // Invalidate cache when order is filled (status is terminal)
-            if (orderCacheService.getIfAvailable() != null) {
-                orderCacheService.getIfAvailable().invalidateOrder(order.getOrderId());
-            }
-            publishOrderFilledEvent(order);
+            afterCommit(() -> publishOrderFilledEvent(order));
         } else if ("REJECTED".equals(status)) {
-            // Invalidate cache when order is rejected (status is terminal)
-            if (orderCacheService.getIfAvailable() != null) {
-                orderCacheService.getIfAvailable().invalidateOrder(order.getOrderId());
-            }
-            publishOrderRejectedEvent(order, reason);
+            afterCommit(() -> publishOrderRejectedEvent(order, reason));
         }
+    }
+
+    private static void afterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 
     /**

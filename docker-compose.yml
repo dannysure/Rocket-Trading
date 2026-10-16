@@ -72,11 +72,29 @@ services:
       timeout: 5s
       retries: 20
 
+  # BR-16: reporting has its own PostgreSQL server, so analyst queries never use trading capacity
+  reporting-db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${REPORTING_DB_NAME:-rocket_reporting}
+      POSTGRES_USER: ${REPORTING_DB_USERNAME:-rocket_reporting}
+      POSTGRES_PASSWORD: ${REPORTING_DB_PASSWORD:-rocket_reporting_password}
+    volumes:
+      - reporting_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
   api:
     build: backend/rocket-trading
     restart: unless-stopped
     depends_on:
       db:
+        condition: service_healthy
+      reporting-db:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -84,9 +102,12 @@ services:
         condition: service_healthy
     environment:
       DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-team_rocket_db}
+      REPORTING_DB_URL: jdbc:postgresql://reporting-db:5432/${REPORTING_DB_NAME:-rocket_reporting}
+      REPORTING_DB_USERNAME: ${REPORTING_DB_USERNAME:-rocket_reporting}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD:-rocket_reporting_password}
       DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
       DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
-      JWT_SECRET: ${JWT_SECRET:-change-me-development-jwt-secret-1234567890}
+      JWT_SECRET: ${JWT_SECRET:-}
       OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-test-client-id}
       OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-test-client-secret}
       OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:4200/auth/callback}
@@ -126,14 +147,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      db:
+      reporting-db:
         condition: service_healthy
     environment:
-      DB_HOST: db
+      # Analytics reads the reporting database only; it has no access to the trading database (9.3)
+      DB_HOST: reporting-db
       DB_PORT: "5432"
-      DB_NAME: ${DB_NAME:-team_rocket_db}
-      DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
-      DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
+      DB_NAME: ${REPORTING_DB_NAME:-rocket_reporting}
+      DB_USERNAME: ${REPORTING_DB_USERNAME:-rocket_reporting}
+      DB_PASSWORD: ${REPORTING_DB_PASSWORD:-rocket_reporting_password}
+      # Verifies the same sign-in tokens as the trading API; analytics stays closed (503) until it is set
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_ISSUER: ${JWT_ISSUER:-rocket-trading}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4200}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -164,6 +190,7 @@ services:
 
 volumes:
   postgres_data:
+  reporting_data:
   redis_data:
   zookeeper_data:
   zookeeper_logs:

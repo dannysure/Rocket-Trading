@@ -7,14 +7,16 @@ import com.rockettrading.rocket_trading.dto.reporting.ReportingOverviewResponse;
 import com.rockettrading.rocket_trading.dto.reporting.VolumeBucketResponse;
 import com.rockettrading.rocket_trading.repository.ReportingRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
+/**
+ * Analyst reporting (BR-16/17). Reads only the reporting database; deliberately not @Transactional,
+ * which would hold a trading-database connection for the length of every analyst request.
+ */
 @Service
-@Transactional(readOnly = true)
 public class ReportingService {
     private final ReportingRepository reportingRepository;
     private final ReportingSnapshot reportingSnapshot;

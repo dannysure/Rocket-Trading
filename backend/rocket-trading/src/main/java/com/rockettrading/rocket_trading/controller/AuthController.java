@@ -65,6 +65,13 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Signs the client out on every device, so a compromised credential's sessions all end at once (BR-03). */
+    @PostMapping("/sign-out-everywhere")
+    public ResponseEntity<Void> signOutEverywhere(Authentication authentication) {
+        authService.signOutEverywhere((AuthenticatedClient) authentication.getPrincipal());
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/profile")
     public ResponseEntity<ApiResponse<ClientRegistrationResponse>> updateProfile(
             @Valid @RequestBody UpdateProfileRequest request,

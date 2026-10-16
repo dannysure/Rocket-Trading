@@ -6,16 +6,19 @@ Redis-cached KPI endpoints
 import hmac
 import os
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 import redis
 from datetime import datetime
 from decimal import Decimal
 
+from api.auth import require_internal_role
 from api.database import get_db
 from api.cache_service import AnalyticsCacheService
 from api.models import KPIPanelResponse
 
-router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+# Every analytics route needs an analyst or operations sign-in (BRD 9.3)
+router = APIRouter(prefix="/api/analytics", tags=["analytics"], dependencies=[Depends(require_internal_role)])
 
 # Global Redis connection (initialized in main.py)
 _redis_client: redis.Redis = None
@@ -77,11 +80,15 @@ def get_overview(
     try:
         cache_service = AnalyticsCacheService(redis_client)
         day_kpis = cache_service.get_kpi_panel(time_period="day")
-        
+        # Read from the reporting database (BR-16), never the trading database
+        totals = db.execute(text(
+            "select count(*) as orders, count(distinct client_id) as clients from reporting.order_facts"
+        )).mappings().one()
+
         return {
-            "total_clients": 0,  # TODO: Query from DB
-            "total_accounts": 0,  # TODO: Query from DB
-            "total_orders": 0,  # TODO: Query from DB
+            "total_clients": totals["clients"],  # clients who have placed at least one order
+            "total_accounts": totals["clients"],  # one direct-trading account per client in this phase
+            "total_orders": totals["orders"],
             "total_fills": day_kpis.get('fills', 0),
             "fill_rate": day_kpis.get('fill_rate', 0),
             "total_gmv": day_kpis.get('gmv', 0),
