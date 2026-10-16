@@ -67,26 +67,26 @@ public class OAuthUserService extends DefaultOAuth2UserService {
   /**
    * Process OAuth user: load or create from database
    */
-  private OAuth2User processOAuthUser(OAuth2UserRequest userRequest, OAuth2User oAuth2User) {
+  OAuth2User processOAuthUser(OAuth2UserRequest userRequest, OAuth2User oAuth2User) {
     String registrationId = userRequest.getClientRegistration().getRegistrationId();
     String email = getEmailFromOAuth2User(oAuth2User, registrationId);
     String name = getNameFromOAuth2User(oAuth2User, registrationId);
-    String login = oAuth2User.getAttribute("login");
+    String providerId = getProviderId(oAuth2User, registrationId);
 
     // If email is not available (e.g., GitHub user has private email), use login as fallback
     if (email == null || email.isEmpty()) {
-      if (login != null && !login.isEmpty()) {
-        email = login + "@github.local";
+      if ("github".equals(registrationId) && providerId != null && !providerId.isEmpty()) {
+        email = providerId + "@github.local";
         log.warn("Email not available from GitHub, using login-based email: {}", email);
       } else {
-        throw new RuntimeException("Could not extract email or login from " + registrationId + " provider");
+        throw new RuntimeException("Could not extract email from " + registrationId + " provider");
       }
     }
 
     // Use name from OAuth or fallback to login or email prefix
     if (name == null || name.isEmpty()) {
-      if (login != null && !login.isEmpty()) {
-        name = login;
+      if (providerId != null && !providerId.isEmpty()) {
+        name = providerId;
       } else {
         name = email.split("@")[0];
       }
@@ -130,19 +130,44 @@ public class OAuthUserService extends DefaultOAuth2UserService {
     );
   }
 
-  /**
-   * Extract email from OAuth2User attributes (GitHub provider)
-   */
+  /** Loads or creates the application client when an OIDC principal was not enriched by the user service. */
+  public Client findOrCreateClient(OAuth2User oAuth2User, String registrationId) {
+    String email = getEmailFromOAuth2User(oAuth2User, registrationId);
+    if (email == null || email.isBlank()) {
+      throw new IllegalStateException("Could not extract email from " + registrationId + " provider");
+    }
+
+    String name = getNameFromOAuth2User(oAuth2User, registrationId);
+    if (name == null || name.isBlank()) {
+      name = email.substring(0, email.indexOf('@'));
+    }
+
+    Client client = clientRepository.findByEmail(email);
+    if (client == null) {
+      client = new Client(generatePositiveId(), name, email);
+      clientRepository.insertProfile(client, null, "Balanced");
+      log.info("Created new user from {} provider: {} (clientId={})", registrationId, email, client.getClientId());
+    }
+
+    if ("CLIENT".equals(client.getRole())) {
+      accountProvisioningService.ensureDirectTradingAccount(client.getClientId(), null);
+    }
+    return client;
+  }
+
   private String getEmailFromOAuth2User(OAuth2User oAuth2User, String registrationId) {
     return oAuth2User.getAttribute("email");
   }
 
-  /**
-   * Extract name from OAuth2User attributes (GitHub provider)
-   */
   private String getNameFromOAuth2User(OAuth2User oAuth2User, String registrationId) {
     String name = oAuth2User.getAttribute("name");
     return name != null ? name : oAuth2User.getAttribute("login");
+  }
+
+  private String getProviderId(OAuth2User oAuth2User, String registrationId) {
+    return "google".equals(registrationId)
+      ? oAuth2User.getAttribute("sub")
+      : oAuth2User.getAttribute("login");
   }
 
   /**

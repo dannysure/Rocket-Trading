@@ -380,8 +380,8 @@ export class AuthApi {
   private readonly http = inject(HttpClient);
   private readonly sessions = inject(SessionStore);
 
-  providers(): Observable<{ password: boolean; github: boolean }> {
-    return this.http.get<ApiResponse<{ password: boolean; github: boolean }>>(`${API_BASE_URL}/auth/providers`).pipe(map((r) => r.data));
+  providers(): Observable<{ password: boolean; github: boolean; google: boolean }> {
+    return this.http.get<ApiResponse<{ password: boolean; github: boolean; google: boolean }>>(`${API_BASE_URL}/auth/providers`).pipe(map((r) => r.data));
   }
 
   signIn(email: string, password: string): Observable<SessionResponse> {
@@ -420,6 +420,10 @@ export class AuthApi {
 
   githubSignInUrl(): string {
     return `${API_BASE_URL}/oauth2/authorization/github`;
+  }
+
+  googleSignInUrl(): string {
+    return `${API_BASE_URL}/oauth2/authorization/google`;
   }
 
   updateProfile(profile: { name: string; dateOfBirth: string; riskProfile: string }): Observable<unknown> {

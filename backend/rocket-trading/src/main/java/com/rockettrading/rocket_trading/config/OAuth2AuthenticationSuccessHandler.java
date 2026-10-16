@@ -5,6 +5,7 @@ import com.rockettrading.rocket_trading.model.Session;
 import com.rockettrading.rocket_trading.repository.ClientRepository;
 import com.rockettrading.rocket_trading.repository.SessionRepository;
 import com.rockettrading.rocket_trading.security.JwtService;
+import com.rockettrading.rocket_trading.service.OAuthUserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
@@ -36,6 +37,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
   private final ClientRepository clientRepository;
   private final SessionRepository sessionRepository;
   private final JwtService jwtService;
+  private final OAuthUserService oauthUserService;
   
   @Value("${app.frontend.url:http://localhost:4200}")
   private String frontendUrl;
@@ -43,11 +45,13 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
   public OAuth2AuthenticationSuccessHandler(
     ClientRepository clientRepository,
     SessionRepository sessionRepository,
-    JwtService jwtService
+    JwtService jwtService,
+    OAuthUserService oauthUserService
   ) {
     this.clientRepository = clientRepository;
     this.sessionRepository = sessionRepository;
     this.jwtService = jwtService;
+    this.oauthUserService = oauthUserService;
   }
 
   @Override
@@ -70,9 +74,9 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
       Long clientId = principal.getAttribute("clientId");
       Client client = clientId != null ? clientRepository.findById(clientId) : null;
       if (client == null) {
-        log.error("No client found for OAuth2 principal (clientId={})", clientId);
-        redirectWithError(response, "Could not load user account");
-        return;
+        String registrationId = request.getRequestURI().replaceFirst(".*/login/oauth2/code/", "");
+        client = oauthUserService.findOrCreateClient(principal, registrationId);
+        log.info("Recovered OAuth client from principal attributes (clientId={})", client.getClientId());
       }
 
       String email = client.getEmail();
