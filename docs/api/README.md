@@ -63,6 +63,10 @@ per position per hour. A sweep every 5 seconds liquidates positions whose equity
 maintenance margin (half the initial margin at max leverage); the isolated margin is
 forfeited. The Angular `/perps` page uses these endpoints; its order book is simulated
 depth around the live quote, and limit orders and TP/SL are not implemented.
+The page starts dormant. **Start live updates** enables page polling for 10 minutes with a
+countdown; **Stop live updates**, leaving the page, or expiry cancels page polling and pending
+updates. Start again to resume. Order buttons are disabled while dormant. Background
+liquidation checks and hourly funding continue independently of the page session.
 
 ## Persistence and verification
 

@@ -62,7 +62,7 @@ describe('PerpsComponent', () => {
   let fixture: ComponentFixture<PerpsComponent>;
   let api: ReturnType<typeof createApi>;
 
-  async function render(account: PerpAccount = flatAccount) {
+  async function render(account: PerpAccount = flatAccount, startLive = true, pollMs = 0) {
     api = createApi(account);
     await TestBed.configureTestingModule({
       imports: [PerpsComponent],
@@ -71,11 +71,12 @@ describe('PerpsComponent', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: PerpsApi, useValue: api },
-        { provide: PERPS_POLL_MS, useValue: 0 },
+        { provide: PERPS_POLL_MS, useValue: pollMs },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(PerpsComponent);
     fixture.detectChanges();
+    if (startLive) fixture.componentInstance.startLiveUpdates();
     await fixture.whenStable();
     fixture.detectChanges();
   }
@@ -96,6 +97,66 @@ describe('PerpsComponent', () => {
     input.dispatchEvent(new Event('input'));
     await settle();
   }
+
+  afterEach(() => {
+    fixture?.destroy();
+    vi.useRealTimers();
+  });
+
+  it('starts dormant without quote calls until the button is clicked', async () => {
+    await render(flatAccount, false);
+    expect(text('[data-testid="live-status"]')).toContain('Dormant');
+    expect(api.ticker).not.toHaveBeenCalled();
+    expect(api.account).not.toHaveBeenCalled();
+    fixture.componentInstance.refresh();
+    fixture.componentInstance.selectMarket('ETH-PERP');
+    expect(api.ticker).not.toHaveBeenCalled();
+    byTestId('live-toggle').click();
+    await settle();
+    expect(api.ticker).toHaveBeenCalledWith('ETH-PERP');
+    expect(api.account).toHaveBeenCalledTimes(1);
+    expect(text('[data-testid="live-status"]')).toContain('10:00');
+  });
+
+  it('expires after ten minutes, cancels in-flight updates, and can restart', async () => {
+    await render(flatAccount, false);
+    vi.useFakeTimers();
+    fixture.componentInstance.startLiveUpdates();
+    const pending = new Subject<PerpAccount>();
+    api.account.mockReturnValueOnce(pending);
+    fixture.componentInstance.refresh();
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(fixture.componentInstance.liveActive()).toBe(false);
+    pending.next(longAccount);
+    expect(fixture.componentInstance.account()).toBe(flatAccount);
+    const calls = api.ticker.mock.calls.length;
+    fixture.componentInstance.refresh();
+    fixture.componentInstance.selectMarket('ETH-PERP');
+    expect(api.ticker).toHaveBeenCalledTimes(calls);
+    fixture.componentInstance.startLiveUpdates();
+    expect(fixture.componentInstance.liveActive()).toBe(true);
+    expect(api.ticker).toHaveBeenCalledTimes(calls + 1);
+    fixture.componentInstance.stopLiveUpdates();
+    expect(fixture.componentInstance.liveActive()).toBe(false);
+  });
+
+  it('polls only during the session and stops on expiry or navigation', async () => {
+    await render(flatAccount, false, 3000);
+    vi.useFakeTimers();
+    fixture.componentInstance.startLiveUpdates();
+    vi.advanceTimersByTime(6000);
+    expect(api.ticker).toHaveBeenCalledTimes(3);
+    vi.advanceTimersByTime(594000);
+    expect(fixture.componentInstance.liveActive()).toBe(false);
+    const calls = api.ticker.mock.calls.length;
+    vi.advanceTimersByTime(60000);
+    expect(api.ticker).toHaveBeenCalledTimes(calls);
+    fixture.componentInstance.startLiveUpdates();
+    fixture.destroy();
+    const afterDestroy = api.ticker.mock.calls.length;
+    vi.advanceTimersByTime(6000);
+    expect(api.ticker).toHaveBeenCalledTimes(afterDestroy);
+  });
 
   it('uses the shared navigation header', async () => {
     await render();
