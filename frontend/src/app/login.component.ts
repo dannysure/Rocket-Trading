@@ -83,6 +83,7 @@ type Mode = 'signin' | 'create';
           @if (googleEnabled()) {
             @if (!githubEnabled()) { <div class="divider"><span>or</span></div> }
             <a class="btn btn-outline btn-block" [href]="googleUrl">
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.35 12.27c0-.78-.07-1.53-.23-2.27H12v4.3h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.69 2.91-4.18 2.91-7.42Z"/><path fill="#34A853" d="M12 21.99c2.63 0 4.84-.87 6.45-2.35l-3.14-2.45c-.87.58-1.98.92-3.31.92-2.55 0-4.71-1.72-5.49-4.03H3.27v2.53A9.74 9.74 0 0 0 12 21.99Z"/><path fill="#FBBC05" d="M6.51 14.08A5.85 5.85 0 0 1 6.2 12c0-.72.12-1.42.31-2.08V7.39H3.27A10 10 0 0 0 2 12c0 1.66.4 3.23 1.27 4.61l3.24-2.53Z"/><path fill="#EA4335" d="M12 5.88c1.43 0 2.71.49 3.72 1.46l2.79-2.79C16.84 2.96 14.63 2 12 2a9.74 9.74 0 0 0-8.73 5.39l3.24 2.53C7.29 7.6 9.45 5.88 12 5.88Z"/></svg>
               Continue with Google
             </a>
           }
