@@ -80,6 +80,12 @@ type Mode = 'signin' | 'create';
               Continue with GitHub
             </a>
           }
+          @if (googleEnabled()) {
+            @if (!githubEnabled()) { <div class="divider"><span>or</span></div> }
+            <a class="btn btn-outline btn-block" [href]="googleUrl">
+              Continue with Google
+            </a>
+          }
         </div>
       </main>
     </div>
@@ -124,6 +130,8 @@ export class LoginComponent implements OnInit {
   protected readonly notice = signal('');
   protected readonly githubEnabled = signal(false);
   protected readonly githubUrl = this.auth.githubSignInUrl();
+  protected readonly googleEnabled = signal(false);
+  protected readonly googleUrl = this.auth.googleSignInUrl();
 
   protected name = '';
   protected email = '';
@@ -133,7 +141,16 @@ export class LoginComponent implements OnInit {
     if (this.route.snapshot.queryParamMap.get('expired')) {
       this.notice.set('Your session ended. Please sign in again.');
     }
-    this.auth.providers().subscribe({ next: (p) => this.githubEnabled.set(p.github), error: () => this.githubEnabled.set(false) });
+    this.auth.providers().subscribe({
+      next: (p) => {
+        this.githubEnabled.set(p.github);
+        this.googleEnabled.set(p.google);
+      },
+      error: () => {
+        this.githubEnabled.set(false);
+        this.googleEnabled.set(false);
+      },
+    });
   }
 
   setMode(mode: Mode): void {

@@ -40,8 +40,14 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Map<String, Boolean>>> providers() {
         return ResponseEntity.ok(ApiResponse.success(Map.of(
                 "password", true,
-                "github", oauthRegistrations.getIfAvailable() != null
+                "github", isProviderRegistered("github"),
+                "google", isProviderRegistered("google")
         )));
+    }
+
+    private boolean isProviderRegistered(String provider) {
+        ClientRegistrationRepository registrations = oauthRegistrations.getIfAvailable();
+        return registrations != null && registrations.findByRegistrationId(provider) != null;
     }
 
     @PostMapping("/register")
