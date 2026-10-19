@@ -130,31 +130,6 @@ public class OAuthUserService extends DefaultOAuth2UserService {
     );
   }
 
-  /** Loads or creates the application client when an OIDC principal was not enriched by the user service. */
-  public Client findOrCreateClient(OAuth2User oAuth2User, String registrationId) {
-    String email = getEmailFromOAuth2User(oAuth2User, registrationId);
-    if (email == null || email.isBlank()) {
-      throw new IllegalStateException("Could not extract email from " + registrationId + " provider");
-    }
-
-    String name = getNameFromOAuth2User(oAuth2User, registrationId);
-    if (name == null || name.isBlank()) {
-      name = email.substring(0, email.indexOf('@'));
-    }
-
-    Client client = clientRepository.findByEmail(email);
-    if (client == null) {
-      client = new Client(generatePositiveId(), name, email);
-      clientRepository.insertProfile(client, null, "Balanced");
-      log.info("Created new user from {} provider: {} (clientId={})", registrationId, email, client.getClientId());
-    }
-
-    if ("CLIENT".equals(client.getRole())) {
-      accountProvisioningService.ensureDirectTradingAccount(client.getClientId(), null);
-    }
-    return client;
-  }
-
   private String getEmailFromOAuth2User(OAuth2User oAuth2User, String registrationId) {
     return oAuth2User.getAttribute("email");
   }
@@ -171,11 +146,10 @@ public class OAuthUserService extends DefaultOAuth2UserService {
   }
 
   /**
-   * Get the attribute name key for GitHub provider
-   * Used to identify the principal attribute
+   * Get the provider-specific attribute used to identify the principal.
    */
   private String getAttributeNameKey(String registrationId) {
-    return "id";
+    return "google".equals(registrationId) ? "sub" : "login";
   }
 
   /**

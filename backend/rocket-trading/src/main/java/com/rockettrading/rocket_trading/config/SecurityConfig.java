@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rockettrading.rocket_trading.security.JwtAuthenticationFilter;
 import com.rockettrading.rocket_trading.security.RestAuthenticationEntryPoint;
 import com.rockettrading.rocket_trading.service.OAuthUserService;
-import com.rockettrading.rocket_trading.service.OAuthOidcUserService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -44,7 +43,6 @@ public class SecurityConfig {
                                             AccessDeniedHandler accessDeniedHandler,
                                             OAuth2AuthenticationSuccessHandler oauth2SuccessHandler,
                                             OAuthUserService oauthUserService,
-                                            OAuthOidcUserService oauthOidcUserService,
                                             ObjectProvider<ClientRegistrationRepository> oauthRegistrations,
                                             CorsConfigurationSource corsConfigurationSource) throws Exception {
         httpSecurity
@@ -78,9 +76,7 @@ public class SecurityConfig {
         // OAuth sign-in is only wired up when at least one provider is configured
         if (oauthRegistrations.getIfAvailable() != null) {
             httpSecurity.oauth2Login(oauth2 -> oauth2
-                    .userInfoEndpoint(userInfo -> userInfo
-                            .userService(oauthUserService)
-                            .oidcUserService(oauthOidcUserService))
+                    .userInfoEndpoint(userInfo -> userInfo.userService(oauthUserService))
                     .successHandler(oauth2SuccessHandler)
                     .failureHandler(oauthFailureHandler()));
         }
