@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, ElementRef, HostListener, inject, input, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthApi, SessionStore } from './api.service';
 import { BrandMarkComponent } from './brand-mark.component';
@@ -132,9 +132,17 @@ export class NavHeaderComponent {
   protected readonly initial = computed(() => (this.sessions.session()?.name || '?').charAt(0).toUpperCase());
   protected readonly roleLabel = computed(() =>
     this.sessions.role() === 'OPERATIONS' ? 'Trading operations' : 'Commercial analyst');
+  private readonly elementRef = inject(ElementRef<HTMLElement>);
 
   toggleAccountMenu(): void {
     this.accountMenuOpen.update((open) => !open);
+  }
+
+  @HostListener('document:click', ['$event'])
+  closeAccountMenuOnOutsideClick(event: MouseEvent): void {
+    if (this.accountMenuOpen() && !this.elementRef.nativeElement.contains(event.target as Node)) {
+      this.accountMenuOpen.set(false);
+    }
   }
 
   signOut(): void {
