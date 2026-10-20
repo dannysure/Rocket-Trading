@@ -47,15 +47,15 @@ import { money } from './format';
               <strong>{{ sessions.session()?.name }}</strong>
               <span>{{ sessions.session()?.email }}</span>
             </div>
-            <div class="kyc-status" role="status">
+            <a routerLink="/kyc" class="kyc-status" role="menuitem" (click)="accountMenuOpen.set(false)">
               <span class="status-icon" aria-hidden="true">×</span>
               <span>KYC not verified</span>
-            </div>
+            </a>
             <nav class="account-links" aria-label="Account">
-              <a href="#" role="menuitem" (click)="$event.preventDefault()">Profile settings</a>
-              <a href="#" role="menuitem" (click)="$event.preventDefault()">Tax documents</a>
-              <a href="#" role="menuitem" (click)="$event.preventDefault()">Security settings</a>
-              <a href="#" role="menuitem" (click)="$event.preventDefault()">Help and support</a>
+              <a routerLink="/profile-settings" role="menuitem" (click)="accountMenuOpen.set(false)">Profile settings</a>
+              <a routerLink="/tax-documents" role="menuitem" (click)="accountMenuOpen.set(false)">Tax documents</a>
+              <a routerLink="/security-settings" role="menuitem" (click)="accountMenuOpen.set(false)">Security settings</a>
+              <a routerLink="/help-support" role="menuitem" (click)="accountMenuOpen.set(false)">Help and support</a>
             </nav>
             <button type="button" class="sign-out" (click)="signOut()">Sign out</button>
           </div>
@@ -102,6 +102,7 @@ import { money } from './format';
     .account-summary strong { font-size: 16px; }
     .account-summary span { color: #68738e; font-size: 12px; overflow-wrap: anywhere; }
     .kyc-status { display: flex; align-items: center; gap: 8px; padding: 14px 0; color: #68738e; font-size: 12px; }
+    .kyc-status:hover { color: var(--brand); }
     .status-icon { color: #bd4651; font-size: 20px; font-weight: 700; line-height: 1; }
     .account-links { display: flex; flex-direction: column; border-top: 1px solid #e7eaf2; padding: 6px 0; }
     .account-links a { color: var(--navy-900); font-size: 13px; padding: 9px 0; }
