@@ -10,6 +10,9 @@ import { BlotterComponent } from './blotter.component';
 import { PerpsComponent } from './perps.component';
 import { InsightsComponent } from './insights.component';
 import { OpsComponent } from './ops.component';
+import {
+  HelpSupportComponent, KycVerificationComponent, ProfileSettingsComponent, SecuritySettingsComponent, TaxDocumentsComponent,
+} from './account-pages.component';
 
 /** Lets a signed-in person with one of the roles through; anyone else goes to sign-in or their own home. */
 export function requireRole(...roles: Role[]): CanActivateFn {
@@ -40,6 +43,12 @@ export const routes: Routes = [
   { path: 'login', component: LoginComponent, canActivate: [signedOutOnly], title: 'Sign in · Rocket Trading' },
   { path: 'auth/callback', component: CallbackComponent, title: 'Signing in · Rocket Trading' },
   { path: 'complete-profile', component: CompleteProfileComponent, canActivate: [requireRole('CLIENT')], title: 'Your profile · Rocket Trading' },
+
+  { path: 'profile-settings', component: ProfileSettingsComponent, canActivate: [requireRole('CLIENT', 'ANALYST', 'OPERATIONS')], title: 'Profile settings · Rocket Trading' },
+  { path: 'tax-documents', component: TaxDocumentsComponent, canActivate: [requireRole('CLIENT', 'ANALYST', 'OPERATIONS')], title: 'Tax documents · Rocket Trading' },
+  { path: 'security-settings', component: SecuritySettingsComponent, canActivate: [requireRole('CLIENT', 'ANALYST', 'OPERATIONS')], title: 'Security settings · Rocket Trading' },
+  { path: 'help-support', component: HelpSupportComponent, canActivate: [requireRole('CLIENT', 'ANALYST', 'OPERATIONS')], title: 'Help and support · Rocket Trading' },
+  { path: 'kyc', component: KycVerificationComponent, canActivate: [requireRole('CLIENT', 'ANALYST', 'OPERATIONS')], title: 'KYC verification · Rocket Trading' },
 
   { path: 'dashboard', component: DashboardComponent, canActivate: [requireRole('CLIENT')], title: 'Dashboard · Rocket Trading' },
   { path: 'trade', component: TradeComponent, canActivate: [requireRole('CLIENT')], title: 'Markets · Rocket Trading' },

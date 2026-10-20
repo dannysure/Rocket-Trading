@@ -129,9 +129,9 @@ export class LoginComponent implements OnInit {
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly notice = signal('');
-  protected readonly githubEnabled = signal(false);
+  protected readonly githubEnabled = signal(true);
   protected readonly githubUrl = this.auth.githubSignInUrl();
-  protected readonly googleEnabled = signal(false);
+  protected readonly googleEnabled = signal(true);
   protected readonly googleUrl = this.auth.googleSignInUrl();
 
   protected name = '';
