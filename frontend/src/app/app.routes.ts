@@ -11,6 +11,7 @@ import { BlotterComponent } from './blotter.component';
 import { PerpsComponent } from './perps.component';
 import { InsightsComponent } from './insights.component';
 import { OpsComponent } from './ops.component';
+import { NewsComponent } from './news.component';
 
 /** Lets a signed-in person with one of the roles through; anyone else goes to sign-in or their own home. */
 export function requireRole(...roles: Role[]): CanActivateFn {
@@ -45,6 +46,7 @@ export const routes: Routes = [
 
   { path: 'dashboard', component: DashboardComponent, canActivate: [requireRole('CLIENT')], title: 'Dashboard · Rocket Trading' },
   { path: 'trade', component: TradeComponent, canActivate: [requireRole('CLIENT')], title: 'Markets · Rocket Trading' },
+  { path: 'news', component: NewsComponent, canActivate: [requireRole('CLIENT')], title: 'News · Rocket Trading' },
   { path: 'blotter', component: BlotterComponent, canActivate: [requireRole('CLIENT')], title: 'Blotter · Rocket Trading' },
   { path: 'perps', component: PerpsComponent, canActivate: [requireRole('CLIENT')], title: 'Perpetuals · Rocket Trading' },
 

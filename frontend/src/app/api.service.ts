@@ -72,6 +72,17 @@ export interface Candle {
   close: number;
 }
 
+export interface NewsArticle {
+  id: string;
+  headline: string;
+  summary: string;
+  source: string;
+  url: string;
+  imageUrl: string;
+  publishedAt: string;
+  symbols: string[];
+}
+
 export interface IndicativePrice {
   symbol: string;
   name: string;
@@ -486,6 +497,19 @@ export class MarketApi {
         params: { side, quantity },
       })
       .pipe(map((r) => r.data));
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class NewsApi {
+  private readonly http = inject(HttpClient);
+
+  market(): Observable<NewsArticle[]> {
+    return this.http.get<ApiResponse<NewsArticle[]>>(`${API_BASE_URL}/news/market`).pipe(map((r) => r.data));
+  }
+
+  forSymbol(symbol: string): Observable<NewsArticle[]> {
+    return this.http.get<ApiResponse<NewsArticle[]>>(`${API_BASE_URL}/news/${encodeURIComponent(symbol)}`).pipe(map((r) => r.data));
   }
 }
 
