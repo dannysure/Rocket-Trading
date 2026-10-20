@@ -2,6 +2,7 @@ import { inject } from '@angular/core';
 import { CanActivateFn, Router, Routes } from '@angular/router';
 import { Role, SessionStore } from './api.service';
 import { LoginComponent } from './login.component';
+import { AdminLoginComponent } from './admin-login.component';
 import { CallbackComponent } from './callback.component';
 import { CompleteProfileComponent } from './complete-profile.component';
 import { DashboardComponent } from './dashboard.component';
@@ -38,6 +39,7 @@ export const routeToHome: CanActivateFn = () => {
 export const routes: Routes = [
   { path: '', pathMatch: 'full', canActivate: [routeToHome], children: [] },
   { path: 'login', component: LoginComponent, canActivate: [signedOutOnly], title: 'Sign in · Rocket Trading' },
+  { path: 'admin/login', component: AdminLoginComponent, canActivate: [signedOutOnly], title: 'Admin sign in · Rocket Trading' },
   { path: 'auth/callback', component: CallbackComponent, title: 'Signing in · Rocket Trading' },
   { path: 'complete-profile', component: CompleteProfileComponent, canActivate: [requireRole('CLIENT')], title: 'Your profile · Rocket Trading' },
 

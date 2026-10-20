@@ -40,7 +40,6 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Map<String, Boolean>>> providers() {
         return ResponseEntity.ok(ApiResponse.success(Map.of(
                 "password", true,
-                "github", isProviderRegistered("github"),
                 "google", isProviderRegistered("google")
         )));
     }

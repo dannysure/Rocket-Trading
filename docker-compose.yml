@@ -87,8 +87,6 @@ services:
       DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
       DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
       JWT_SECRET: ${JWT_SECRET:-change-me-development-jwt-secret-1234567890}
-      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-test-client-id}
-      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-test-client-secret}
       OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:4200/auth/callback}
       OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
       OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}

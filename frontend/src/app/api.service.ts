@@ -380,10 +380,6 @@ export class AuthApi {
   private readonly http = inject(HttpClient);
   private readonly sessions = inject(SessionStore);
 
-  providers(): Observable<{ password: boolean; github: boolean; google: boolean }> {
-    return this.http.get<ApiResponse<{ password: boolean; github: boolean; google: boolean }>>(`${API_BASE_URL}/auth/providers`).pipe(map((r) => r.data));
-  }
-
   signIn(email: string, password: string): Observable<SessionResponse> {
     return this.http
       .post<ApiResponse<SessionResponse>>(`${API_BASE_URL}/auth/sign-in`, { email, password })
@@ -394,7 +390,7 @@ export class AuthApi {
     return this.http.post(`${API_BASE_URL}/auth/register`, request);
   }
 
-  /** Exchanges the one-time token from the GitHub redirect for this browser's session. */
+  /** Exchanges the one-time token from the Google redirect for this browser's session. */
   completeOAuth(redirectToken: string): Observable<{ session: StoredSession; profileComplete: boolean }> {
     return this.http
       .post<ApiResponse<{ clientId: number; email: string; name: string; accessToken: string; expiresIn: number; role: Role; profileComplete?: boolean }>>(
@@ -416,10 +412,6 @@ export class AuthApi {
           return { session, profileComplete: r.data.profileComplete ?? false };
         }),
       );
-  }
-
-  githubSignInUrl(): string {
-    return `${API_BASE_URL}/oauth2/authorization/github`;
   }
 
   googleSignInUrl(): string {

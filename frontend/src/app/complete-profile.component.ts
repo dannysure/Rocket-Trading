@@ -41,7 +41,7 @@ function yearsAgo(years: number): Date {
   return date;
 }
 
-/** First stop after a GitHub sign-up: GitHub does not share the details a trading account needs. */
+/** First stop after a Google sign-up: Google does not share the details a trading account needs. */
 @Component({
   selector: 'app-complete-profile',
   imports: [FormsModule, RouterLink],
@@ -49,7 +49,7 @@ function yearsAgo(years: number): Date {
     <main class="center">
       <form class="card box" (ngSubmit)="save()">
         <h1>Finish setting up your account</h1>
-        <p class="hint">Signed in with GitHub as {{ sessions.session()?.email }}.</p>
+        <p class="hint">Signed in with Google as {{ sessions.session()?.email }}.</p>
         @if (error()) { <p class="alert error" role="alert">{{ error() }}</p> }
         <div class="field">
           <label for="name">Full name</label>
