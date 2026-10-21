@@ -36,11 +36,14 @@ pipeline {
 
         stage('Frontend verification') {
             steps {
-                dir('frontend') {
-                    sh 'npm ci'
-                    sh 'npm test -- --watch=false'
-                    sh 'npm run build'
-                }
+                sh '''
+                    docker run --rm \
+                        -u "$(id -u):$(id -g)" \
+                        -v "$WORKSPACE/frontend:/workspace" \
+                        -w /workspace \
+                        node:22-alpine \
+                        sh -c 'npm ci && npm test -- --watch=false && npm run build'
+                '''
             }
         }
 
@@ -62,9 +65,9 @@ pipeline {
             }
             steps {
                 sh '''
-                    docker compose -p "$COMPOSE_PROJECT_NAME" \
+                    docker-compose -p "$COMPOSE_PROJECT_NAME" \
                         -f docker-compose.yml -f compose.e2e.yaml config --quiet
-                    docker compose -p "$COMPOSE_PROJECT_NAME" \
+                    docker-compose -p "$COMPOSE_PROJECT_NAME" \
                         -f docker-compose.yml -f compose.e2e.yaml up --build -d
 
                     for attempt in $(seq 1 60); do
@@ -76,7 +79,7 @@ pipeline {
                         sleep 2
                     done
 
-                    docker compose -p "$COMPOSE_PROJECT_NAME" \
+                    docker-compose -p "$COMPOSE_PROJECT_NAME" \
                         -f docker-compose.yml -f compose.e2e.yaml ps
                     exit 1
                 '''
@@ -93,7 +96,7 @@ pipeline {
             script {
                 if (params.RUN_COMPOSE_SMOKE) {
                     sh '''
-                        docker compose -p "$COMPOSE_PROJECT_NAME" \
+                        docker-compose -p "$COMPOSE_PROJECT_NAME" \
                             -f docker-compose.yml -f compose.e2e.yaml down \
                             --volumes --remove-orphans || true
                     '''
