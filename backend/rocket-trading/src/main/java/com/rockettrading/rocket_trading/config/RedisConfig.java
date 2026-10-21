@@ -1,5 +1,6 @@
 package com.rockettrading.rocket_trading.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,7 +26,7 @@ public class RedisConfig {
      * - Analytics KPI cache (kpi:{metric}:{dimension})
      */
     @Bean
-    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
@@ -33,7 +34,7 @@ public class RedisConfig {
         StringRedisSerializer stringSerializer = new StringRedisSerializer();
         
         // Use JSON serialization for values (flexible object support)
-        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer();
+        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper.copy().findAndRegisterModules());
 
         // String key-value operations
         template.setKeySerializer(stringSerializer);
