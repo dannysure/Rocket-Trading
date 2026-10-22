@@ -73,14 +73,9 @@ public class OAuthUserService extends DefaultOAuth2UserService {
     String name = getNameFromOAuth2User(oAuth2User, registrationId);
     String providerId = getProviderId(oAuth2User, registrationId);
 
-    // If email is not available (e.g., GitHub user has private email), use login as fallback
+    // Google supplies an email address required to identify the trading account.
     if (email == null || email.isEmpty()) {
-      if ("github".equals(registrationId) && providerId != null && !providerId.isEmpty()) {
-        email = providerId + "@github.local";
-        log.warn("Email not available from GitHub, using login-based email: {}", email);
-      } else {
-        throw new RuntimeException("Could not extract email from " + registrationId + " provider");
-      }
+      throw new RuntimeException("Could not extract email from " + registrationId + " provider");
     }
 
     // Use name from OAuth or fallback to login or email prefix
@@ -140,16 +135,14 @@ public class OAuthUserService extends DefaultOAuth2UserService {
   }
 
   private String getProviderId(OAuth2User oAuth2User, String registrationId) {
-    return "google".equals(registrationId)
-      ? oAuth2User.getAttribute("sub")
-      : oAuth2User.getAttribute("login");
+    return oAuth2User.getAttribute("sub");
   }
 
   /**
    * Get the provider-specific attribute used to identify the principal.
    */
   private String getAttributeNameKey(String registrationId) {
-    return "google".equals(registrationId) ? "sub" : "login";
+    return "sub";
   }
 
   /**

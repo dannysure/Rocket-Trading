@@ -2,6 +2,7 @@ import { inject } from '@angular/core';
 import { CanActivateFn, Router, Routes } from '@angular/router';
 import { Role, SessionStore } from './api.service';
 import { LoginComponent } from './login.component';
+import { AdminLoginComponent } from './admin-login.component';
 import { CallbackComponent } from './callback.component';
 import { CompleteProfileComponent } from './complete-profile.component';
 import { DashboardComponent } from './dashboard.component';
@@ -10,6 +11,7 @@ import { BlotterComponent } from './blotter.component';
 import { PerpsComponent } from './perps.component';
 import { InsightsComponent } from './insights.component';
 import { OpsComponent } from './ops.component';
+import { NewsComponent } from './news.component';
 import {
   HelpSupportComponent, KycVerificationComponent, ProfileSettingsComponent, SecuritySettingsComponent, TaxDocumentsComponent,
 } from './account-pages.component';
@@ -41,6 +43,7 @@ export const routeToHome: CanActivateFn = () => {
 export const routes: Routes = [
   { path: '', pathMatch: 'full', canActivate: [routeToHome], children: [] },
   { path: 'login', component: LoginComponent, canActivate: [signedOutOnly], title: 'Sign in · Rocket Trading' },
+  { path: 'admin/login', component: AdminLoginComponent, canActivate: [signedOutOnly], title: 'Admin sign in · Rocket Trading' },
   { path: 'auth/callback', component: CallbackComponent, title: 'Signing in · Rocket Trading' },
   { path: 'complete-profile', component: CompleteProfileComponent, canActivate: [requireRole('CLIENT')], title: 'Your profile · Rocket Trading' },
 
@@ -52,6 +55,7 @@ export const routes: Routes = [
 
   { path: 'dashboard', component: DashboardComponent, canActivate: [requireRole('CLIENT')], title: 'Dashboard · Rocket Trading' },
   { path: 'trade', component: TradeComponent, canActivate: [requireRole('CLIENT')], title: 'Markets · Rocket Trading' },
+  { path: 'news', component: NewsComponent, canActivate: [requireRole('CLIENT')], title: 'News · Rocket Trading' },
   { path: 'blotter', component: BlotterComponent, canActivate: [requireRole('CLIENT')], title: 'Blotter · Rocket Trading' },
   { path: 'perps', component: PerpsComponent, canActivate: [requireRole('CLIENT')], title: 'Perpetuals · Rocket Trading' },
 

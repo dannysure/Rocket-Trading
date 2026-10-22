@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-@EnableConfigurationProperties({JwtProperties.class, FauxnanceProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, FauxnanceProperties.class, NewsProperties.class})
 public class AppConfig {
 
     @Bean
@@ -15,5 +15,13 @@ public class AppConfig {
         factory.setConnectTimeout(java.time.Duration.ofSeconds(3));
         factory.setReadTimeout(java.time.Duration.ofSeconds(5));
         return builder.requestFactory(factory).baseUrl(fauxnanceProperties.getBaseUrl()).build();
+    }
+
+    @Bean
+    RestClient newsRestClient(RestClient.Builder builder, NewsProperties newsProperties) {
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(java.time.Duration.ofSeconds(3));
+        factory.setReadTimeout(java.time.Duration.ofSeconds(5));
+        return builder.requestFactory(factory).baseUrl(newsProperties.getBaseUrl()).build();
     }
 }

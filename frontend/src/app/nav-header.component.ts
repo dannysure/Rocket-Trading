@@ -25,6 +25,7 @@ import { money } from './format';
           } @else {
             <a routerLink="/dashboard" routerLinkActive="active" class="tab">Dashboard</a>
             <a routerLink="/trade" routerLinkActive="active" class="tab">Markets</a>
+            <a routerLink="/news" routerLinkActive="active" class="tab">News</a>
             <a routerLink="/blotter" routerLinkActive="active" class="tab">Blotter</a>
             <a routerLink="/perps" routerLinkActive="active" class="tab">Perps</a>
           }

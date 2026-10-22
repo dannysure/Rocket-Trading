@@ -14,27 +14,15 @@ import java.util.List;
  * OAuth 2.0 Provider Configuration
  * 
  * Registers OAuth 2.0 providers when their credentials are configured:
- * - GitHub
  * - Google
  * 
  * Environment variables (each provider is offered only when both credentials are set;
  * email and password sign-in works either way):
- * - OAUTH_GITHUB_CLIENT_ID
- * - OAUTH_GITHUB_CLIENT_SECRET
  * - OAUTH_GOOGLE_CLIENT_ID
  * - OAUTH_GOOGLE_CLIENT_SECRET
  */
 @Configuration
 public class OAuthConfig {
-
-  @Value("${oauth.github.client-id:}")
-  private String githubClientId;
-
-  @Value("${oauth.github.client-secret:}")
-  private String githubClientSecret;
-
-  @Value("${oauth.github.redirect-uri:http://localhost:8081/login/oauth2/code/github}")
-  private String githubRedirectUri;
 
   @Value("${oauth.google.client-id:}")
   private String googleClientId;
@@ -49,35 +37,13 @@ public class OAuthConfig {
    * OAuth 2.0 Client Registration Repository, registered when at least one provider is configured
    */
   @Bean
-  @ConditionalOnExpression("(!'${oauth.github.client-id:}'.isBlank() and !'${oauth.github.client-secret:}'.isBlank()) or (!'${oauth.google.client-id:}'.isBlank() and !'${oauth.google.client-secret:}'.isBlank())")
+  @ConditionalOnExpression("!'${oauth.google.client-id:}'.isBlank() and !'${oauth.google.client-secret:}'.isBlank()")
   public InMemoryClientRegistrationRepository clientRegistrationRepository() {
     List<ClientRegistration> registrations = new ArrayList<>();
-    if (!githubClientId.isBlank() && !githubClientSecret.isBlank()) {
-      registrations.add(githubClientRegistration());
-    }
     if (!googleClientId.isBlank() && !googleClientSecret.isBlank()) {
       registrations.add(googleClientRegistration());
     }
     return new InMemoryClientRegistrationRepository(registrations.toArray(new ClientRegistration[0]));
-  }
-
-  /**
-   * GitHub OAuth 2.0 Provider Configuration
-   */
-  private ClientRegistration githubClientRegistration() {
-    return ClientRegistration.withRegistrationId("github")
-      .clientId(githubClientId)
-      .clientSecret(githubClientSecret)
-      .clientAuthenticationMethod(org.springframework.security.oauth2.core.ClientAuthenticationMethod.CLIENT_SECRET_POST)
-      .authorizationGrantType(org.springframework.security.oauth2.core.AuthorizationGrantType.AUTHORIZATION_CODE)
-      .redirectUri(githubRedirectUri)
-      .authorizationUri("https://github.com/login/oauth/authorize")
-      .tokenUri("https://github.com/login/oauth/access_token")
-      .userInfoUri("https://api.github.com/user")
-      .userNameAttributeName("login")
-      .clientName("GitHub")
-      .scope("read:user", "user:email")
-      .build();
   }
 
   private ClientRegistration googleClientRegistration() {

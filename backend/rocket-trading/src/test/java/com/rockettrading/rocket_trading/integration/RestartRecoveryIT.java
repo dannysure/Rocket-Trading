@@ -56,7 +56,7 @@ class RestartRecoveryIT {
             assertEquals(2, db.queryForObject("SELECT count(*) FROM orders", Integer.class));
             assertEquals(2, db.queryForObject("SELECT count(*) FROM fills", Integer.class));
             assertEquals(new BigDecimal("9798.0000"), db.queryForObject("SELECT cash_balance FROM client_accounts", BigDecimal.class));
-            assertEquals(11, db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class));
+            assertEquals(12, db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class));
         }
     }
 
@@ -65,6 +65,7 @@ class RestartRecoveryIT {
                 "--server.port=0", "--spring.datasource.url=" + postgres.getJdbcUrl(),
                 "--spring.datasource.username=" + postgres.getUsername(), "--spring.datasource.password=" + postgres.getPassword(),
                 "--trading.worker.enabled=" + worker, "--trading.worker.delay-ms=100", "--spring.main.banner-mode=off",
-                "--fixtures.password=", "--catalog.sync.enabled=false");
+                "--fixtures.password=", "--catalog.sync.enabled=false", "--spring.kafka.enabled=false",
+                "--spring.redis.enabled=false");
     }
 }

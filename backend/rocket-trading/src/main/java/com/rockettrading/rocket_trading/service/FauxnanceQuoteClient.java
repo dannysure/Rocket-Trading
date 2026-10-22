@@ -7,6 +7,7 @@ import com.rockettrading.rocket_trading.exception.ExternalServiceException;
 import com.rockettrading.rocket_trading.model.Quote;
 import com.rockettrading.rocket_trading.repository.model.FinancialInstrumentRecord;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -26,7 +27,7 @@ public class FauxnanceQuoteClient implements QuoteProvider {
     private final RestClient restClient;
     private final FauxnanceProperties fauxnanceProperties;
 
-    public FauxnanceQuoteClient(RestClient fauxnanceRestClient, FauxnanceProperties fauxnanceProperties) {
+    public FauxnanceQuoteClient(@Qualifier("fauxnanceRestClient") RestClient fauxnanceRestClient, FauxnanceProperties fauxnanceProperties) {
         this.restClient = fauxnanceRestClient;
         this.fauxnanceProperties = fauxnanceProperties;
     }
