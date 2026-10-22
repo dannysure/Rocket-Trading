@@ -39,11 +39,14 @@ is offered too when `OAUTH_GITHUB_CLIENT_ID`/`SECRET` are set. Set `FIXTURE_PASS
 the demo accounts: `joanna@example.com` (client), `priya@rocket.internal` (analyst: Insights) and
 `david@rocket.internal` (operations: Insights and Trade lookup).
 
-Instruments cover US, UK (US listings) and Indian equities, FX and crypto; everything settles in the
+Instruments cover US, UK and Indian equities, FX and crypto (the seeded UK names are US listings; London
+listings are tradable when the quote provider carries them, pence quotes included); everything settles in the
 USD account at the FX rate recorded on the fill. An order whose market has no current price (e.g. NSE
 outside its hours) is accepted and waits, retrying every `TRADING_DEFERRAL_RETRY_SECONDS`, and expires
-after `TRADING_DEFERRAL_MAX_HOURS`. Internal reporting reads a snapshot refreshed every
-`REPORTING_REFRESH_MS`, never the live order tables.
+after `TRADING_DEFERRAL_MAX_HOURS`. Internal reporting runs on its own database (`reporting-db`),
+which orders are copied to every `REPORTING_REFRESH_MS`; analyst queries never touch the trading
+database. Set `JWT_SECRET` in `.env` (`openssl rand -base64 48`): without it the API signs with a
+random key per run (everyone signs in again after a restart) and the analytics API stays closed.
 For a deterministic demo without an API key, use the isolated browser-test stack in the guide.
 
 ```sh
@@ -110,6 +113,8 @@ See [the API guide](docs/api/README.md) and [OpenAPI contract](docs/api/openapi.
 This is a local demo: practice cash is modelled in-platform (no banking integration), and the
 fixture accounts must never be enabled in a shared environment. Roles limit access: clients see
 only their own book, analysts see aggregate reporting, operations can trace any trade (every lookup
-is itself logged). The additional capability (BR-18) is the client watchlist.
+is itself logged). The additional capability (BR-18) is the client watchlist; see
+[why it was chosen](docs/BR-18-additional-capability.md). The BRD coverage table is in
+[the connection guide](docs/db-backend-connection.md#brd-coverage).
 
 The authoritative trading schema is `backend/rocket-trading/src/main/resources/db/migration/`.

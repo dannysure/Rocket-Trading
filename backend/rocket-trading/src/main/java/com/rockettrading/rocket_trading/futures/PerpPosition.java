@@ -63,7 +63,7 @@ public record PerpPosition(PerpSide side, BigDecimal size, BigDecimal entryPrice
 
     /** Positive rates are paid by longs to shorts; payments settle against this position's isolated margin. */
     public PerpFunding applyFunding(BigDecimal markPrice, BigDecimal fundingRate) {
-        BigDecimal payment = CALCULATOR.calculateFundingPayment(size, markPrice, fundingRate)
+        BigDecimal payment = CALCULATOR.fundingPayment(size, markPrice, fundingRate)
                 .multiply(side.direction())
                 .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         return new PerpFunding(new PerpPosition(side, size, entryPrice, margin.subtract(payment), leverage), payment);

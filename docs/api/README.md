@@ -7,7 +7,8 @@ The contract documents behavior; Spring controllers and validation enforce it.
 
 Public endpoints: `POST /auth/register` and `POST /auth/sign-in`.
 All other endpoints require the returned bearer token and an active server-side session.
-Success uses `{data, meta}`; errors use `{error}`; sign-out returns 204.
+Success uses `{data, meta}`; errors use `{error}`; sign-out and `POST /auth/sign-out-everywhere`
+(ends every session of the client, BR-03) return 204.
 Registration and sign-in remain email-only local fixtures.
 
 ## Trading dashboard support
@@ -19,7 +20,8 @@ The Angular trading dashboard currently uses:
 - `GET /portfolio/summary` for cash and positions
 - `GET /orders`, `GET /fills/{orderId}`, and `GET /orders/{orderId}/timeline`
   for blotter, fills, and audit reconstruction
-- `GET /reporting/overview` for a lightweight internal reporting snapshot
+- `GET /reporting/overview` (and `/instruments`, `/segments`, `/markets`, `/volume`) for internal
+  reporting, served from the separate reporting database
 
 ## Orders
 
@@ -63,6 +65,10 @@ per position per hour. A sweep every 5 seconds liquidates positions whose equity
 maintenance margin (half the initial margin at max leverage); the isolated margin is
 forfeited. The Angular `/perps` page uses these endpoints; its order book is simulated
 depth around the live quote, and limit orders and TP/SL are not implemented.
+The page starts dormant. **Start live updates** enables page polling for 10 minutes with a
+countdown; **Stop live updates**, leaving the page, or expiry cancels page polling and pending
+updates. Start again to resume. Order buttons are disabled while dormant. Background
+liquidation checks and hourly funding continue independently of the page session.
 
 ## Persistence and verification
 
@@ -76,5 +82,5 @@ and database using an HTTP quote fixture. Changes to routes, payloads or validat
 update this contract, Angular interfaces and relevant tests together.
 
 Remaining limits include fixture authentication, large numeric client-ID display precision,
-restricted markets and same-database reporting rather than Kafka-backed projection isolation.
+and London listings depending on what the quote provider carries.
 See the guide's BRD matrix.

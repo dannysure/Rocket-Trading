@@ -24,4 +24,12 @@ public class AppConfig {
         factory.setReadTimeout(java.time.Duration.ofSeconds(5));
         return builder.requestFactory(factory).baseUrl(newsProperties.getBaseUrl()).build();
     }
+  
+    @Bean
+    RestClient coinbaseRestClient(RestClient.Builder builder, PerpsProperties perpsProperties) {
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(java.time.Duration.ofSeconds(3));
+        factory.setReadTimeout(java.time.Duration.ofSeconds(5));
+        return builder.requestFactory(factory).baseUrl(perpsProperties.getPriceFeed().getRestUrl()).build();
+    }
 }

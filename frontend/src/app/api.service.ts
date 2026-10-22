@@ -435,7 +435,16 @@ export class AuthApi {
 
   /** Revokes the session server-side; the local session is cleared whatever the outcome. */
   signOut(): Observable<unknown> {
-    return this.http.post(`${API_BASE_URL}/auth/sign-out`, {}).pipe(
+    return this.endSessions('sign-out');
+  }
+
+  /** Revokes every session this person has, on all devices; the local session is cleared too. */
+  signOutEverywhere(): Observable<unknown> {
+    return this.endSessions('sign-out-everywhere');
+  }
+
+  private endSessions(endpoint: 'sign-out' | 'sign-out-everywhere'): Observable<unknown> {
+    return this.http.post(`${API_BASE_URL}/auth/${endpoint}`, {}).pipe(
       map((r) => {
         this.sessions.clear();
         return r;

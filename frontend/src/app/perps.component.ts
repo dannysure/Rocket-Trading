@@ -1,28 +1,36 @@
 import { Component, InjectionToken, OnDestroy, OnInit, PLATFORM_ID, computed, inject, signal } from '@angular/core';
 import { DatePipe, isPlatformBrowser } from '@angular/common';
-import { EMPTY, Observable, Subject, Subscription, catchError, finalize, interval, merge, switchMap } from 'rxjs';
+import { EMPTY, Observable, Subject, Subscription, catchError, finalize, interval, merge, retry, switchMap, throwError, timer } from 'rxjs';
 import { errorMessage } from './api.service';
 import { NavHeaderComponent } from './nav-header.component';
 import { money, newIdempotencyKey, price, quantity, signedMoney, trendClass } from './format';
-import { PerpAccount, PerpFunding, PerpMarket, PerpOrder, PerpOrderRequest, PerpPosition, PerpsApi, PerpTicker } from './perps.service';
-import { OrderSide, buildDepthLadder, formatCountdown, maxOrderSize, previewOrder, toCandles } from './perps.math';
+import { PerpAccount, PerpFunding, PerpMarket, PerpOrder, PerpOrderRequest, PerpPosition, PerpsApi, PerpsStream, PerpStreamError, PerpTicker } from './perps.service';
+import { Candle, OrderSide, buildDepthLadder, estimateFillPrice, formatCountdown, markToMarket, maxOrderSize, mergeTick, previewOrder } from './perps.math';
+import { ChartLine, PerpsChartComponent } from './perps-chart.component';
 
-/** How often prices and the account refresh; 0 disables polling (tests). */
+/** How often the account, orders and funding refresh; 0 disables polling (tests). Prices stream continuously. */
 export const PERPS_POLL_MS = new InjectionToken<number>('PERPS_POLL_MS', { factory: () => 3000 });
 
-const MAX_MARK_SAMPLES = 900;
-const CHART_WIDTH = 1000;
-const CHART_HEIGHT = 260;
+const LIVE_SESSION_MS = 10 * 60_000;
+const MAX_STREAM_RETRY_MS = 30_000;
 const QUICK_AMOUNTS = [25, 50, 75, 100];
 
 @Component({
   selector: 'app-perps',
-  imports: [DatePipe, NavHeaderComponent],
+  imports: [DatePipe, NavHeaderComponent, PerpsChartComponent],
   template: `
     <app-nav-header [cash]="account()?.availableCollateral ?? null" [currency]="currency()" />
     <main class="page wide">
       <h1 class="page-title">Perpetuals</h1>
       <p class="page-subtitle">Go long or short on crypto with leverage. Isolated margin: a position can only lose the margin you put on it.</p>
+
+      <div class="live-controls">
+        <button type="button" class="btn btn-outline" data-testid="live-toggle" (click)="liveActive() ? stopLiveUpdates() : startLiveUpdates()">
+          {{ liveActive() ? 'Stop live updates' : 'Start live updates' }}
+        </button>
+        <span role="status" data-testid="live-status">{{ liveActive() ? 'Live · pauses in ' + liveRemaining() : 'Dormant · live updates paused' }}</span>
+        <p class="hint">Live updates stream prices for 10 minutes. Background liquidation checks and funding continue while dormant.</p>
+      </div>
 
       <div class="pill-row markets" role="tablist" aria-label="Perpetual markets">
         @for (m of markets(); track m.symbol) {
@@ -38,55 +46,42 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
           <h2 data-testid="market-symbol">{{ selectedSymbol() }}</h2>
         </div>
         <dl class="stats">
-          <div><dt title="Mid of the live bid and ask">Mark</dt><dd class="num" data-testid="mark-price">{{ fmt.price(ticker()?.markPrice, currency()) }}</dd></div>
-          <div><dt title="Underlying price from the quote provider">Oracle</dt><dd class="num" data-testid="oracle-price">{{ fmt.price(ticker()?.oraclePrice, currency()) }}</dd></div>
+          <div><dt title="Mark price: spot plus the premium set by the long/short open-interest imbalance. Positions are valued and liquidated at this price.">Perp price</dt><dd class="num" data-testid="mark-price">{{ fmt.price(ticker()?.markPrice, currency()) }}</dd></div>
+          <div><dt title="Live Coinbase mid price">Spot price</dt><dd class="num" data-testid="oracle-price">{{ fmt.price(ticker()?.oraclePrice, currency()) }}</dd></div>
+          <div><dt title="How far the perp trades from spot; positive while longs outweigh shorts">Perp vs spot</dt>
+            <dd class="num" data-testid="premium" [class]="fmt.trendClass(ticker()?.premium)">{{ premiumText() }}</dd></div>
           <div>
-            <dt title="Hourly rate; positive means longs pay shorts">Funding / next in</dt>
+            <dt title="Charged on the hour: (perp - spot) / spot / 8. The side that pushed the perp away from spot pays the other side.">Funding (1h) / next in</dt>
             <dd class="num">
               <span data-testid="funding-rate" [class]="fundingClass()">{{ rate(ticker()?.fundingRate) }}</span>
               <span class="muted" data-testid="funding-countdown"> · {{ countdown() }}</span>
             </dd>
           </div>
-          <div><dt title="Total open position size across all traders">Open interest</dt><dd class="num" data-testid="open-interest">{{ fmt.quantity(ticker()?.openInterest) }} {{ baseAsset() }}</dd></div>
+          <div><dt title="Total open position size across all traders, long and short">Open interest</dt>
+            <dd class="num"><span data-testid="open-interest">{{ fmt.quantity(ticker()?.openInterest) }} {{ baseAsset() }}</span>
+              @if (ticker(); as t) { <span class="oi-split muted" data-testid="open-interest-split">Longs {{ fmt.quantity(t.longOpenInterest) }} · Shorts {{ fmt.quantity(t.shortOpenInterest) }}</span> }</dd></div>
           <div><dt>Spread</dt><dd class="num">{{ fmt.price(ladder()?.spread, currency()) }}</dd></div>
         </dl>
-        @if (ticker()?.delayed) { <span class="badge waiting" title="The provider missed a refresh; the price is older than usual">Delayed price</span> }
+        @if (skewNote(); as note) { <p class="skew-note" data-testid="skew-note">{{ note }}</p> }
+        @if (ticker()?.delayed) { <span class="badge waiting" title="The live price stream is down; prices come from the slower backup provider">Delayed price</span> }
         @if (tickerError()) { <p class="alert error bar-alert" role="alert">{{ tickerError() }}</p> }
       </section>
 
       <div class="grid">
         <section class="card chart-card">
           <div class="card-head">
-            <h2>Mark price</h2>
+            <h2>Price</h2>
             <div class="pill-row">
-              @for (option of candleOptions; track option.ms) {
-                <button type="button" class="pill small" [class.active]="candleMs() === option.ms" (click)="candleMs.set(option.ms)">{{ option.label }}</button>
+              @for (option of candleOptions; track option.seconds) {
+                <button type="button" class="pill small" [attr.data-testid]="'interval-' + option.label" [class.active]="candleSeconds() === option.seconds"
+                        (click)="setCandleInterval(option.seconds)">{{ option.label }}</button>
               }
             </div>
           </div>
-          @if (chart(); as c) {
-            <div class="chart-wrap">
-              <svg [attr.viewBox]="'0 0 ' + c.width + ' ' + c.height" preserveAspectRatio="none" class="chart" role="img"
-                   [attr.aria-label]="selectedSymbol() + ' mark price candles'">
-                @for (line of c.axis; track line.topPercent) {
-                  <line class="grid-line" x1="0" [attr.x2]="c.width" [attr.y1]="line.topPercent * c.height / 100" [attr.y2]="line.topPercent * c.height / 100" />
-                }
-                <line class="last-line" x1="0" [attr.x2]="c.width" [attr.y1]="c.lastY" [attr.y2]="c.lastY" />
-                @for (k of c.candles; track $index) {
-                  <g [class.rise]="k.up" [class.fall]="!k.up">
-                    <line class="wick" [attr.x1]="k.x" [attr.x2]="k.x" [attr.y1]="k.wickTop" [attr.y2]="k.wickBottom" />
-                    <rect [attr.x]="k.bodyX" [attr.width]="k.bodyWidth" [attr.y]="k.bodyTop" [attr.height]="k.bodyHeight" />
-                  </g>
-                }
-              </svg>
-              @for (line of c.axis; track line.topPercent) {
-                <span class="axis num" [style.top.%]="line.topPercent" aria-hidden="true">{{ fmt.price(line.price, currency()) }}</span>
-              }
-            </div>
-            <p class="hint">{{ c.samples }} mark sample{{ c.samples === 1 ? '' : 's' }} from this session, refreshed every few seconds while the page is open.</p>
-          } @else {
-            <p class="chart-empty">Waiting for the first mark price…</p>
-          }
+          <app-perps-chart [candles]="candles()" [live]="liveCandle()" [lines]="chartLines()"
+                           [label]="selectedSymbol() + ' price candles'" data-testid="price-chart" />
+          @if (candlesError()) { <p class="alert error" role="alert">{{ candlesError() }}</p> }
+          <p class="hint">Candles: {{ baseAsset() }} spot oracle from Coinbase, updated tick by tick while live updates run. Lines mark the perp's mark price and your entry and liquidation prices.</p>
         </section>
 
         <section class="card book" data-testid="order-book">
@@ -161,9 +156,11 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
           @if (orderSuccess()) { <p class="alert info" role="status">{{ orderSuccess() }}</p> }
 
           <button type="button" class="btn btn-block submit" data-testid="submit-order" [class.sell]="side() === 'SELL'"
-                  [disabled]="submitting() || !ticker()" (click)="submit()">{{ submitting() ? 'Placing order…' : submitLabel() }}</button>
+                  [disabled]="submitting() || !ticker() || !liveActive()" (click)="submit()">{{ submitting() ? 'Placing order…' : submitLabel() }}</button>
 
           <dl class="summary">
+            <div><dt title="Includes the premium this order pays for moving the open-interest imbalance">Est. fill price</dt>
+              <dd class="num" data-testid="fill-price">{{ preview() ? fmt.price(fillPrice(), currency()) : '—' }}</dd></div>
             <div><dt>Liquidation price</dt><dd class="num">{{ preview() ? fmt.price(preview()!.liquidationPrice, currency()) : '—' }}</dd></div>
             <div><dt>Order value</dt><dd class="num" data-testid="order-value">{{ preview() ? fmt.money(preview()!.orderValue, currency()) : '—' }}</dd></div>
             <div><dt>Margin required</dt><dd class="num" data-testid="margin-required">{{ preview() ? fmt.money(preview()!.marginRequired, currency()) : '—' }}</dd></div>
@@ -188,7 +185,7 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
                 <table class="data">
                   <thead><tr><th>Market</th><th class="right">Size</th><th class="right">Value</th><th class="right">Entry</th><th class="right">Mark</th><th class="right">PnL (ROE)</th><th class="right">Liq. price</th><th class="right">Margin</th><th class="right">Funding</th><th></th></tr></thead>
                   <tbody>
-                    @for (p of account()?.positions ?? []; track p.positionId) {
+                    @for (p of positions(); track p.positionId) {
                       <tr data-testid="position-row">
                         <td><div class="instrument-cell"><button type="button" class="link symbol" (click)="selectMarket(p.symbol)">{{ p.symbol }}</button>
                           <span class="sub side" [class.buy]="p.side === 'LONG'" [class.sell]="p.side === 'SHORT'">{{ p.side === 'LONG' ? 'Long' : 'Short' }} · {{ p.leverage }}x</span></div></td>
@@ -200,7 +197,7 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
                         <td class="right num">{{ fmt.price(p.liquidationPrice, currency()) }}</td>
                         <td class="right num">{{ fmt.money(p.margin, currency()) }}</td>
                         <td class="right num {{ fmt.trendClass(-p.cumulativeFunding) }}">{{ fmt.signedMoney(-p.cumulativeFunding, currency()) }}</td>
-                        <td class="right"><button type="button" class="btn btn-outline small-btn" data-testid="close-position" [disabled]="submitting()" (click)="closePosition(p)">Close</button></td>
+                        <td class="right"><button type="button" class="btn btn-outline small-btn" data-testid="close-position" [disabled]="submitting() || !liveActive()" (click)="closePosition(p)">Close</button></td>
                       </tr>
                     } @empty {
                       <tr><td colspan="10" class="empty">No open positions yet.</td></tr>
@@ -245,7 +242,7 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
                         <td class="right num {{ fmt.trendClass(-f.payment) }}">{{ fmt.signedMoney(-f.payment, currency()) }}</td>
                       </tr>
                     } @empty {
-                      <tr><td colspan="7" class="empty">No funding payments yet. Funding settles at the top of every hour.</td></tr>
+                      <tr><td colspan="7" class="empty">No funding payments yet. Positions open on the hour pay or receive funding.</td></tr>
                     }
                   </tbody>
                 </table>
@@ -257,11 +254,13 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
         <section class="card account">
           <h2>Perpetuals account</h2>
           <dl class="summary">
-            <div><dt>Account value</dt><dd class="num">{{ fmt.money(account()?.accountValue, currency()) }}</dd></div>
+            <div><dt>Account value</dt><dd class="num" data-testid="account-value">{{ fmt.money(accountValue(), currency()) }}</dd></div>
             <div><dt>Available collateral</dt><dd class="num">{{ fmt.money(account()?.availableCollateral, currency()) }}</dd></div>
             <div><dt>Margin in use</dt><dd class="num">{{ fmt.money(account()?.totalMargin, currency()) }}</dd></div>
-            <div><dt>Unrealized PnL</dt><dd class="num {{ fmt.trendClass(account()?.unrealizedPnl) }}">{{ fmt.signedMoney(account()?.unrealizedPnl, currency()) }}</dd></div>
+            <div><dt>Unrealized PnL</dt><dd class="num {{ fmt.trendClass(unrealizedPnl()) }}" data-testid="unrealized-pnl">{{ fmt.signedMoney(unrealizedPnl(), currency()) }}</dd></div>
             <div><dt>Account leverage</dt><dd class="num">{{ accountLeverage().toFixed(2) }}x</dd></div>
+            <div><dt title="What your open positions pay (negative) or receive at the next funding time, at the current rate">Next funding (est.)</dt>
+              <dd class="num {{ fmt.trendClass(nextFunding()) }}" data-testid="next-funding">{{ fmt.signedMoney(nextFunding(), currency()) }}</dd></div>
           </dl>
           <p class="hint">Collateral is your cash balance, shared with the Markets page.</p>
         </section>
@@ -269,6 +268,8 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
     </main>
   `,
   styles: [`
+    .live-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+    .live-controls .hint { flex-basis: 100%; margin: 0; }
     .wide { max-width: 1440px; }
     .markets { margin-bottom: 16px; }
     .pill-lev { opacity: .7; margin-left: 4px; }
@@ -284,15 +285,9 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
     .grid.bottom { grid-template-columns: minmax(0, 1fr) 320px; }
     .grid > .card { margin-bottom: 0; min-width: 0; }
     .grid + .grid { margin-top: 24px; }
-    .chart-wrap { position: relative; margin-right: 76px; }
-    .chart { width: 100%; height: 260px; display: block; overflow: visible; }
-    .chart line { vector-effect: non-scaling-stroke; }
-    .grid-line { stroke: var(--border); }
-    .last-line { stroke: var(--brand); stroke-dasharray: 4 4; }
-    .rise .wick { stroke: var(--green); } .rise rect { fill: var(--green); }
-    .fall .wick { stroke: var(--red); } .fall rect { fill: var(--red); }
-    .axis { position: absolute; right: -76px; transform: translateY(-50%); font-size: 11px; color: var(--text-muted); }
-    .chart-empty { height: 260px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 14px; background: var(--bg); border-radius: 12px; margin: 0; }
+    .oi-split { display: block; font-size: 11px; font-weight: 500; margin-top: 2px; }
+    .skew-note { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--text-muted); }
+    .chart-card .hint { margin: 10px 0 0; }
     .book { padding: 16px 0 12px; }
     .book .tabs, .book-note, .book .skeleton { padding: 0 16px; }
     .book-note { margin: 10px 0 8px; font-size: 12px; }
@@ -327,34 +322,46 @@ const QUICK_AMOUNTS = [25, 50, 75, 100];
     .sub-num { margin-left: 4px; font-size: 12px; }
     .small-btn { min-height: 32px; padding: 6px 12px; font-size: 13px; }
     @media (max-width: 1200px) { .grid { grid-template-columns: minmax(0, 1fr) 320px; } .book { grid-column: 1; } .ticket { grid-row: 1 / span 2; grid-column: 2; } }
-    @media (max-width: 860px) { .grid, .grid.bottom { grid-template-columns: minmax(0, 1fr); } .ticket { grid-row: auto; grid-column: auto; order: -1; } .chart-wrap { margin-right: 64px; } .axis { right: -64px; } }
+    @media (max-width: 860px) { .grid, .grid.bottom { grid-template-columns: minmax(0, 1fr); } .ticket { grid-row: auto; grid-column: auto; order: -1; } }
   `],
 })
 export class PerpsComponent implements OnInit, OnDestroy {
   private readonly perps = inject(PerpsApi);
+  private readonly stream = inject(PerpsStream);
   private readonly pollMs = inject(PERPS_POLL_MS);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
   private readonly subscriptions = new Subscription();
+  private liveSubscriptions = new Subscription();
+  private liveUntil = 0;
+  readonly liveActive = signal(false);
+  readonly liveRemaining = computed(() => {
+    const seconds = Math.max(0, Math.ceil((this.liveUntil - this.now()) / 1000));
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  });
   private readonly refresh$ = new Subject<void>();
-  private readonly tickerReload$ = new Subject<void>();
+  private readonly candleReload$ = new Subject<void>();
   // Reused only when retrying the same order after an uncertain failure, so a retry can't fill twice
   private pendingOrder: { payload: string; key: string } | null = null;
 
   protected readonly fmt = { money, price, quantity, signedMoney, trendClass };
   protected readonly quickAmounts = QUICK_AMOUNTS;
   protected readonly candleOptions = [
-    { label: '1m', ms: 60_000 },
-    { label: '5m', ms: 300_000 },
-    { label: '15m', ms: 900_000 },
+    { label: '1m', seconds: 60 },
+    { label: '5m', seconds: 300 },
+    { label: '15m', seconds: 900 },
+    { label: '1h', seconds: 3600 },
   ];
 
   readonly markets = signal<PerpMarket[]>([]);
   readonly selectedSymbol = signal('BTC-PERP');
-  readonly ticker = signal<PerpTicker | null>(null);
+  // Latest streamed ticker per market symbol
+  readonly tickers = signal<Record<string, PerpTicker>>({});
   readonly account = signal<PerpAccount | null>(null);
   readonly orders = signal<PerpOrder[]>([]);
   readonly funding = signal<PerpFunding[]>([]);
-  readonly marks = signal<{ time: number; price: number }[]>([]);
+  readonly candles = signal<Candle[]>([]);
+  readonly liveCandle = signal<Candle | null>(null);
+  readonly candlesError = signal('');
   readonly now = signal(Date.now());
   readonly tickerError = signal('');
 
@@ -367,24 +374,65 @@ export class PerpsComponent implements OnInit, OnDestroy {
   readonly orderSuccess = signal('');
   readonly bookTab = signal<'book' | 'fills'>('book');
   readonly bottomTab = signal<'positions' | 'trades' | 'funding'>('positions');
-  readonly candleMs = signal(60_000);
+  readonly candleSeconds = signal(60);
 
+  readonly ticker = computed(() => this.tickers()[this.selectedSymbol()] ?? null);
   readonly market = computed(() => this.markets().find((m) => m.symbol === this.selectedSymbol()) ?? null);
   readonly currency = computed(() => this.account()?.currency ?? this.market()?.quoteCurrency ?? 'USD');
   readonly baseAsset = computed(() => this.market()?.baseAsset ?? this.selectedSymbol().replace(/-PERP$/, ''));
   readonly maxLeverage = computed(() => this.market()?.maxLeverage ?? this.ticker()?.maxLeverage ?? 1);
-  readonly position = computed(() => this.account()?.positions.find((p) => p.symbol === this.selectedSymbol()) ?? null);
+  // Server positions re-marked at the streamed mark, so value and PnL move with every tick
+  readonly positions = computed<PerpPosition[]>(() => {
+    const tickers = this.tickers();
+    return (this.account()?.positions ?? []).map((p) => {
+      const mark = tickers[p.symbol]?.markPrice;
+      return mark ? { ...p, ...markToMarket(p, mark) } : p;
+    });
+  });
+  readonly position = computed(() => this.positions().find((p) => p.symbol === this.selectedSymbol()) ?? null);
+  readonly unrealizedPnl = computed(() => {
+    const account = this.account();
+    if (!account) return null;
+    return this.positions().reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0);
+  });
+  readonly accountValue = computed(() => {
+    const account = this.account();
+    return account ? account.availableCollateral + account.totalMargin + (this.unrealizedPnl() ?? 0) : null;
+  });
+  // Positive when the account receives funding at the next interval
+  readonly nextFunding = computed(() => {
+    const account = this.account();
+    if (!account) return null;
+    const tickers = this.tickers();
+    return this.positions().reduce((sum, p) => {
+      const t = tickers[p.symbol];
+      return t ? sum - (p.side === 'LONG' ? 1 : -1) * p.size * t.markPrice * t.fundingRate : sum;
+    }, 0);
+  });
+  readonly premiumText = computed(() => {
+    const ticker = this.ticker();
+    if (!ticker) return '—';
+    return `${signedMoney(ticker.markPrice - ticker.oraclePrice, this.currency())} · ${this.signedRate(ticker.premium)}`;
+  });
+  // Says which side is crowded and that the other side is paid, which is what draws traders to offset the skew
+  readonly skewNote = computed(() => {
+    const ticker = this.ticker();
+    if (!ticker) return null;
+    const skew = ticker.longOpenInterest - ticker.shortOpenInterest;
+    if (Math.abs(skew) < 1e-9) return 'Longs and shorts balance, so the perp trades at spot and no funding is due.';
+    const longsCrowded = skew > 0;
+    return `${longsCrowded ? 'Longs outweigh shorts' : 'Shorts outweigh longs'} by ${quantity(Math.abs(skew))} ${this.baseAsset()}, `
+      + `so the perp trades ${(Math.abs(ticker.premium) * 100).toFixed(3)}% ${longsCrowded ? 'above' : 'below'} spot. `
+      + `${longsCrowded ? 'Longs pay shorts' : 'Shorts pay longs'} ${this.rate(Math.abs(ticker.fundingRate))} on the hour, `
+      + `so going ${longsCrowded ? 'short' : 'long'} earns funding.`;
+  });
   // An open position fixes the leverage: the backend rejects adds at a different leverage
   readonly leverage = computed(() => this.position()?.leverage ?? Math.min(this.chosenLeverage(), this.maxLeverage()));
   readonly size = computed(() => {
     const value = Number(this.sizeInput());
     return Number.isFinite(value) && value > 0 ? value : 0;
   });
-  readonly fillPrice = computed(() => {
-    const ticker = this.ticker();
-    if (!ticker) return 0;
-    return this.side() === 'BUY' ? ticker.ask : ticker.bid;
-  });
+  readonly fillPrice = computed(() => this.estimateFill(this.size()));
   readonly preview = computed(() => {
     const ticker = this.ticker();
     if (!ticker || this.size() <= 0) return null;
@@ -400,8 +448,14 @@ export class PerpsComponent implements OnInit, OnDestroy {
       position: position ? { side: position.side, size: position.size, entryPrice: position.entryPrice, margin: position.margin } : null,
     });
   });
-  readonly maxSize = computed(() => maxOrderSize(
-    this.account()?.availableCollateral ?? 0, this.fillPrice(), this.leverage(), this.ticker()?.takerFeeRate ?? 0));
+  readonly maxSize = computed(() => {
+    const available = this.account()?.availableCollateral ?? 0;
+    const feeRate = this.ticker()?.takerFeeRate ?? 0;
+    // A bigger order pays a bigger premium, so size against the price the touch-price maximum would fill at;
+    // that size fills no higher, so its margin and fee still fit
+    const atTouch = maxOrderSize(available, this.estimateFill(0), this.leverage(), feeRate);
+    return maxOrderSize(available, this.estimateFill(atTouch), this.leverage(), feeRate);
+  });
   readonly ladder = computed(() => {
     const ticker = this.ticker();
     return ticker ? buildDepthLadder(ticker.bid, ticker.ask, 9) : null;
@@ -415,12 +469,22 @@ export class PerpsComponent implements OnInit, OnDestroy {
     return ticker ? formatCountdown(Date.parse(ticker.nextFundingAt) - this.now()) : '--:--:--';
   });
   readonly fundingClass = computed(() => trendClass(this.ticker()?.fundingRate));
-  readonly chart = computed(() => this.buildChart());
+  readonly chartLines = computed<ChartLine[]>(() => {
+    const lines: ChartLine[] = [];
+    const ticker = this.ticker();
+    const position = this.position();
+    if (ticker) lines.push({ price: ticker.markPrice, title: 'Mark', tone: 'brand', dashed: true });
+    if (position) {
+      lines.push({ price: position.entryPrice, title: 'Entry', tone: 'muted' });
+      if (position.liquidationPrice !== null) lines.push({ price: position.liquidationPrice, title: 'Liq.', tone: 'down', dashed: true });
+    }
+    return lines;
+  });
   readonly accountLeverage = computed(() => {
-    const account = this.account();
-    if (!account || account.accountValue <= 0) return 0;
-    const notional = account.positions.reduce((sum, p) => sum + (p.positionValue ?? p.size * p.entryPrice), 0);
-    return notional / account.accountValue;
+    const value = this.accountValue();
+    if (!value || value <= 0) return 0;
+    const notional = this.positions().reduce((sum, p) => sum + (p.positionValue ?? p.size * p.entryPrice), 0);
+    return notional / value;
   });
   readonly fills = computed(() => this.orders().filter((o) => o.status === 'FILLED'));
   readonly submitLabel = computed(() => (this.side() === 'BUY' ? 'Buy / Long' : 'Sell / Short'));
@@ -441,39 +505,105 @@ export class PerpsComponent implements OnInit, OnDestroy {
       error: (error) => this.tickerError.set(errorMessage(error, 'Perpetual markets could not be loaded.')),
     }));
 
-    const polling = this.isBrowser && this.pollMs > 0;
-    const refreshes = polling ? merge(this.refresh$, interval(this.pollMs)) : this.refresh$;
-    this.subscriptions.add(this.latest(refreshes, () => this.perps.account()).subscribe((account) => this.account.set(account)));
-    this.subscriptions.add(this.latest(refreshes, () => this.perps.orders()).subscribe((orders) => this.orders.set(orders ?? [])));
-    this.subscriptions.add(this.latest(refreshes, () => this.perps.funding()).subscribe((funding) => this.funding.set(funding ?? [])));
-    this.subscriptions.add(merge(refreshes, this.tickerReload$).pipe(
-      switchMap(() => this.perps.ticker(this.selectedSymbol()).pipe(catchError((error) => {
-        this.tickerError.set(errorMessage(error, 'The price feed is unavailable right now.'));
+    // History does not use the live price feed, so the chart is shown while dormant too
+    // switchMap drops history for a market or interval the user has already left
+    this.subscriptions.add(this.candleReload$.pipe(
+      switchMap(() => this.perps.candles(this.selectedSymbol(), this.candleSeconds()).pipe(catchError((error) => {
+        this.candlesError.set(errorMessage(error, 'Price history is unavailable right now.'));
         return EMPTY;
       }))),
-    ).subscribe((ticker) => this.onTicker(ticker)));
-    if (polling) {
-      this.subscriptions.add(interval(1000).subscribe(() => this.now.set(Date.now())));
+    ).subscribe((candles) => {
+      this.candles.set(candles ?? []);
+      this.liveCandle.set(null);
+      this.candlesError.set('');
+    }));
+    if (this.isBrowser) {
+      this.candleReload$.next();
+      this.loadAccountOnce();
+      // The market header is filled straight away; live updates then stream it
+      this.subscriptions.add(this.perps.tickers().pipe(catchError((error) => {
+        this.tickerError.set(errorMessage(error, 'Market data is unavailable right now.'));
+        return EMPTY;
+      })).subscribe((tickers) => { if (!this.liveActive()) this.onTickers(tickers ?? []); }));
     }
+  }
+
+  startLiveUpdates(): void {
+    if (!this.isBrowser || this.liveActive()) return;
+    this.liveSubscriptions = new Subscription();
+    this.liveUntil = Date.now() + LIVE_SESSION_MS;
+    this.now.set(Date.now());
+    this.liveActive.set(true);
+    const polling = this.isBrowser && this.pollMs > 0;
+    const ticks = polling ? merge(this.refresh$, interval(this.pollMs)) : this.refresh$;
+    const refreshes = ticks.pipe(switchMap(() => {
+      if (Date.now() >= this.liveUntil) {
+        this.stopLiveUpdates();
+        return EMPTY;
+      }
+      return [undefined];
+    }));
+    this.liveSubscriptions.add(this.latest(refreshes, () => this.perps.account()).subscribe((account) => this.account.set(account)));
+    this.liveSubscriptions.add(this.latest(refreshes, () => this.perps.orders()).subscribe((orders) => this.orders.set(orders ?? [])));
+    this.liveSubscriptions.add(this.latest(refreshes, () => this.perps.funding()).subscribe((funding) => this.funding.set(funding ?? [])));
+    this.liveSubscriptions.add(this.stream.tickers().pipe(
+      retry({
+        resetOnSuccess: true,
+        delay: (error, attempt) => {
+          // An expired session is handled by the polled requests, which send the user to sign in
+          if (error instanceof PerpStreamError && (error.status === 401 || error.status === 403)) return throwError(() => error);
+          this.tickerError.set('The live price stream was interrupted. Reconnecting…');
+          return timer(Math.min(MAX_STREAM_RETRY_MS, 1000 * 2 ** (attempt - 1)));
+        },
+      }),
+    ).subscribe({
+      next: (tickers) => this.onTickers(tickers),
+      error: () => this.tickerError.set('The live price stream is unavailable. Sign in again to resume.'),
+    }));
+    if (polling) {
+      this.liveSubscriptions.add(interval(1000).subscribe(() => this.now.set(Date.now())));
+    }
+    this.liveSubscriptions.add(timer(LIVE_SESSION_MS).subscribe(() => this.stopLiveUpdates()));
+    // Catch up on candles missed while dormant before live ticks extend them
+    this.candleReload$.next();
     this.refresh();
   }
 
+  stopLiveUpdates(): void {
+    this.liveSubscriptions.unsubscribe();
+    this.liveActive.set(false);
+  }
+
   ngOnDestroy(): void {
+    this.stopLiveUpdates();
     this.subscriptions.unsubscribe();
   }
 
   refresh(): void {
+    if (!this.liveActive()) return;
+    if (Date.now() >= this.liveUntil) {
+      this.stopLiveUpdates();
+      return;
+    }
     this.refresh$.next();
   }
 
   selectMarket(symbol: string): void {
     if (symbol === this.selectedSymbol()) return;
     this.selectedSymbol.set(symbol);
-    this.ticker.set(null);
-    this.marks.set([]);
     this.sizeInput.set('');
     this.orderError.set('');
-    this.tickerReload$.next();
+    this.candles.set([]);
+    this.liveCandle.set(null);
+    this.candleReload$.next();
+  }
+
+  setCandleInterval(seconds: number): void {
+    if (seconds === this.candleSeconds()) return;
+    this.candleSeconds.set(seconds);
+    this.candles.set([]);
+    this.liveCandle.set(null);
+    this.candleReload$.next();
   }
 
   setSide(side: OrderSide): void {
@@ -523,6 +653,11 @@ export class PerpsComponent implements OnInit, OnDestroy {
     return `${(value * 100).toFixed(4)}%`;
   }
 
+  protected signedRate(value: number | null | undefined): string {
+    if (value === null || value === undefined) return '—';
+    return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value * 100).toFixed(3)}%`;
+  }
+
   protected roe(value: number): string {
     return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value * 100).toFixed(2)}%`;
   }
@@ -536,6 +671,10 @@ export class PerpsComponent implements OnInit, OnDestroy {
   }
 
   private placeOrder(request: PerpOrderRequest, onFilled?: () => void): void {
+    if (!this.liveActive() || Date.now() >= this.liveUntil) {
+      this.stopLiveUpdates();
+      return;
+    }
     const payload = JSON.stringify(request);
     if (this.pendingOrder?.payload !== payload) {
       this.pendingOrder = { payload, key: newIdempotencyKey() };
@@ -567,51 +706,54 @@ export class PerpsComponent implements OnInit, OnDestroy {
       }));
   }
 
+  // Positions, trades and funding history are shown on arrival; live updates then keep them current.
+  // A live session's own responses are newer, so this one-off load never overwrites them.
+  private loadAccountOnce(): void {
+    const once = <T>(load: Observable<T>, apply: (value: T) => void) => this.subscriptions.add(
+      load.pipe(catchError(() => EMPTY)).subscribe((value) => { if (!this.liveActive()) apply(value); }));
+    once(this.perps.account(), (account) => this.account.set(account));
+    once(this.perps.orders(), (orders) => this.orders.set(orders ?? []));
+    once(this.perps.funding(), (funding) => this.funding.set(funding ?? []));
+  }
+
   // switchMap drops an in-flight request when a newer refresh starts, so a slow older response can't overwrite newer data
   private latest<T>(trigger: Observable<unknown>, load: () => Observable<T>): Observable<T> {
     return trigger.pipe(switchMap(() => load().pipe(catchError(() => EMPTY))));
   }
 
-  private onTicker(ticker: PerpTicker | undefined): void {
-    // Ignore a response for a market the user has already switched away from
-    if (!ticker || ticker.symbol !== this.selectedSymbol()) return;
-    this.ticker.set(ticker);
+  private onTickers(tickers: PerpTicker[]): void {
+    if (!tickers?.length) return;
+    this.tickers.update((current) => {
+      const next = { ...current };
+      for (const ticker of tickers) next[ticker.symbol] = ticker;
+      return next;
+    });
     this.tickerError.set('');
-    this.marks.update((samples) => [...samples, { time: Date.now(), price: ticker.markPrice }].slice(-MAX_MARK_SAMPLES));
+    const selected = tickers.find((t) => t.symbol === this.selectedSymbol());
+    if (!selected) return;
+    const history = this.candles();
+    const last = this.liveCandle() ?? history[history.length - 1] ?? null;
+    const next = mergeTick(last, Date.parse(selected.capturedAt) / 1000, selected.oraclePrice, this.candleSeconds());
+    if (next) this.liveCandle.set(next);
   }
 
-  private buildChart() {
-    const candles = toCandles(this.marks(), this.candleMs()).slice(-60);
-    if (!candles.length) return null;
-    let low = Math.min(...candles.map((c) => c.low));
-    let high = Math.max(...candles.map((c) => c.high));
-    // Keep a visible range when the price has not moved yet
-    const pad = Math.max((high - low) * 0.1, high * 0.0005);
-    low -= pad;
-    high += pad;
-    const y = (value: number) => CHART_HEIGHT - ((value - low) / (high - low)) * CHART_HEIGHT;
-    const slot = CHART_WIDTH / 60;
-    const offset = CHART_WIDTH - candles.length * slot;
-    const last = candles[candles.length - 1];
-    return {
-      width: CHART_WIDTH,
-      height: CHART_HEIGHT,
-      candles: candles.map((c, i) => {
-        const top = y(Math.max(c.open, c.close));
-        return {
-          x: offset + i * slot + slot / 2,
-          bodyX: offset + i * slot + slot * 0.2,
-          bodyWidth: slot * 0.6,
-          wickTop: y(c.high),
-          wickBottom: y(c.low),
-          bodyTop: top,
-          bodyHeight: Math.max(1, y(Math.min(c.open, c.close)) - top),
-          up: c.close >= c.open,
-        };
-      }),
-      lastY: y(last.close),
-      axis: [0, 0.25, 0.5, 0.75, 1].map((f) => ({ topPercent: f * 100, price: high - f * (high - low) })),
-      samples: this.marks().length,
-    };
+  /** Expected fill for this ticket's side at a given size, including the premium the order pays. */
+  private estimateFill(size: number): number {
+    const ticker = this.ticker();
+    if (!ticker) return 0;
+    const market = this.market();
+    const position = this.position();
+    // Reduce-only orders against the position fill at most its size
+    const closing = this.reduceOnly() && position && (position.side === 'LONG') !== (this.side() === 'BUY');
+    return estimateFillPrice({
+      side: this.side(),
+      size: closing ? Math.min(size, position!.size) : size,
+      bid: ticker.bid,
+      ask: ticker.ask,
+      premium: ticker.premium,
+      skew: ticker.longOpenInterest - ticker.shortOpenInterest,
+      skewScale: market?.skewScale ?? 0,
+      maxPremium: market?.maxPremium ?? 0,
+    });
   }
 }

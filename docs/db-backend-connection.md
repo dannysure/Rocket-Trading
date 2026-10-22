@@ -216,21 +216,25 @@ Never reinstall that trigger on the trading database: Java already performs sett
 | Browser gets 502 immediately after startup | Wait for API startup/migrations; inspect API logs if it persists. |
 | No Docker environment during `verify` | Start Docker Desktop; integration tests intentionally fail instead of silently skipping. |
 
-## BRD coverage in this phase
+## BRD coverage
 
 | Requirement | Evidence / remaining gap |
 | --- | --- |
-| BR-01 | Registration/sign-in tested; email fixture is not secure production identity. |
-| BR-02–03 | HTTP tests cover own-data access, fill ownership, session expiry and revocation. |
+| BR-01 | Registration/sign-in tested; email fixture is not secure production identity (out of scope, section 4.2). |
+| BR-02 | HTTP tests cover own-data access and fill/timeline ownership, including with the Redis order cache on (`OrderCacheOwnershipIT`). |
+| BR-03 | Sessions expire after 8 hours; sign-out revokes one session and "Sign out everywhere" revokes all of them. |
 | BR-04–05 | Buy/sell, input validation, supported instruments, tradability, cash and holding checks. |
 | BR-06 | Acceptance is committed separately; restart test recovers an accepted order. |
-| BR-07 | Browser/unit tests verify automatic polling and settlement display. |
+| BR-07 | The ticket and blotter poll status; only finished orders are cached, so a status is never stale. |
 | BR-08–09 | Fresh execution quote, limit recheck, atomic rollback, concurrency and duplicate tests. |
 | BR-10–11 | Portfolio, order history and fills tested; restart preserves balances. |
-| BR-12 | Partial: USD stock/crypto catalogue only; FX and broader market/currency coverage deferred. |
-| BR-13 | Indicative quote lookup exercised in the browser. |
-| BR-14–15 | Durable records, pricing evidence, balance changes and append-only protection; operational audit access and full retention controls deferred. |
-| BR-16–18 | Isolated reporting, insights and additional capability deferred. |
+| BR-12 | US, UK and Indian equities, FX and crypto, settled in the account currency at the recorded FX rate. Any listing the quote provider carries is tradable, including London listings quoted in pence. The seeded UK names are US listings because the provider carried no LSE listings when they were added. |
+| BR-13 | Indicative price on the ticket before submission. |
+| BR-14–15 | Append-only audit, fills, ledger and quotes; operations trade lookup reconstructs any order's lifecycle, and each lookup is logged. |
+| BR-16 | Reporting has its own database (`reporting-db` in compose), copied incrementally from the audit trail; analyst queries never touch trading tables (`ReportingIsolationIT`). |
+| BR-17 | Insights page: volumes, most active instruments, client-segment and market activity. |
+| BR-18 | Client watchlist; see [the justification](BR-18-additional-capability.md). |
+| 9.3 | Role-based API access; the published development JWT secret is refused; the analytics API needs an analyst/operations sign-in and reads only the reporting database. |
 
 Other limits: one direct-trading account and one full fill per order, no real banking,
 no reservations for pending orders (balances are rechecked at execution), and no standing
@@ -251,5 +255,4 @@ core-mechanics demo, not a complete production or regulatory implementation.
 > an existing database; do not reset its volume or run the legacy fill-trigger SQL.
 >
 > Run `./mvnw verify` in the backend module with Docker running for the unit/database
-> tests. Frontend and browser commands are above. Sign-in remains a local email fixture;
-> reporting and broader BRD features remain separate work.
+> tests. Frontend and browser commands are above. Sign-in remains a local email fixture.

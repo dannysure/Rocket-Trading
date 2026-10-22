@@ -141,8 +141,8 @@ interface Kpi {
       </div>
 
       <p class="footnote">
-        Figures come from a reporting snapshot that refreshes on its own schedule, so these queries never compete with client order flow.
-        @if (overview()?.dataAsOf) { Snapshot taken {{ overview()!.dataAsOf | date: 'd MMM y, HH:mm:ss' }}. }
+        Figures come from a separate reporting database that is updated on its own schedule, so these queries never compete with client order flow.
+        @if (overview()?.dataAsOf) { Last updated {{ overview()!.dataAsOf | date: 'd MMM y, HH:mm:ss' }}. }
         Values are in US dollars, the account currency.
       </p>
     </main>

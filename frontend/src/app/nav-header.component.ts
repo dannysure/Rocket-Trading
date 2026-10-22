@@ -59,6 +59,10 @@ import { money } from './format';
               <a routerLink="/help-support" role="menuitem" (click)="accountMenuOpen.set(false)">Help and support</a>
             </nav>
             <button type="button" class="sign-out" (click)="signOut()">Sign out</button>
+            <button type="button" class="sign-out-all" (click)="signOut(true)"
+                    title="Ends your sessions on every device, for example if you think someone else has your password">
+              Sign out everywhere
+            </button>
           </div>
         }
       </div>
@@ -112,7 +116,12 @@ import { money } from './format';
       background: transparent; border: 1px solid #33406a; color: #c9d3ec; border-radius: 8px;
       padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: 36px; width: 100%;
     }
-    .sign-out:hover { color: var(--navy-900); border-color: #5b82ff; }
+    .sign-out:hover { color: #fff; border-color: #5b82ff; }
+    .sign-out-all {
+      background: none; border: none; color: #c9d3ec; font-size: 12px; cursor: pointer;
+      text-decoration: underline; text-underline-offset: 3px; padding: 4px 0; min-height: 36px;
+    }
+    .sign-out-all:hover { color: #fff; }
     @media (max-width: 700px) {
       .nav { padding: 12px 16px; }
       .account-menu { right: 16px; }
@@ -147,8 +156,8 @@ export class NavHeaderComponent {
     }
   }
 
-  signOut(): void {
-    this.auth.signOut().subscribe({
+  signOut(everywhere = false): void {
+    (everywhere ? this.auth.signOutEverywhere() : this.auth.signOut()).subscribe({
       complete: () => this.router.navigate(['/login']),
       error: () => this.router.navigate(['/login']),
     });

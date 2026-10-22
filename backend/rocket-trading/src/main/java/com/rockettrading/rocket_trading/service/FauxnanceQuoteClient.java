@@ -87,7 +87,7 @@ public class FauxnanceQuoteClient implements QuoteProvider {
             instrument.setTickerSymbol(data.get("symbol").asText());
             instrument.setInstrumentName(data.path("name").asText(data.get("symbol").asText()));
             instrument.setAssetClass(assetClassFor(data.path("type").asText()));
-            instrument.setBaseCurrency(data.get("currency").asText().toUpperCase());
+            instrument.setBaseCurrency(tradingCurrency(data.get("currency").asText()));
             instrument.setTradable(data.path("active").asBoolean(false));
             instrument.setListingExchange(data.path("exchange").asText(null));
             instrument.setMarketSegment(segmentFor(instrument.getAssetClass(), instrument.getListingExchange()));
@@ -132,6 +132,7 @@ public class FauxnanceQuoteClient implements QuoteProvider {
      */
     List<CandleResponse> mapCandles(JsonNode body, LocalDate from) {
         JsonNode candles = body == null ? null : body.path("data").path("candles");
+        BigDecimal scale = minorUnitScale(body == null ? null : body.path("data").path("currency").asText(null));
         List<CandleResponse> result = new ArrayList<>();
         if (candles == null || !candles.isArray()) {
             return result;
@@ -143,10 +144,10 @@ public class FauxnanceQuoteClient implements QuoteProvider {
             if (date.isBefore(from)) continue;
             result.add(new CandleResponse(
                     date,
-                    decimalOrNull(candle, "open"),
-                    decimalOrNull(candle, "high"),
-                    decimalOrNull(candle, "low"),
-                    new BigDecimal(candle.get("close").asText())
+                    inMajorUnits(decimalOrNull(candle, "open"), scale),
+                    inMajorUnits(decimalOrNull(candle, "high"), scale),
+                    inMajorUnits(decimalOrNull(candle, "low"), scale),
+                    inMajorUnits(new BigDecimal(candle.get("close").asText()), scale)
             ));
         }
         return result;
@@ -186,9 +187,13 @@ public class FauxnanceQuoteClient implements QuoteProvider {
         if (providerStale && !fauxnanceProperties.isAllowStale()) {
             throw new ExternalServiceException("QUOTE_STALE", "Provider marked the quote stale");
         }
-        BigDecimal price = extractRequiredDecimal(payload, "price", "last", "lastPrice", "quote", "value");
-        BigDecimal bid = extractOptionalDecimal(payload, price, "bid", "bestBid", "bidPrice");
-        BigDecimal ask = extractOptionalDecimal(payload, price, "ask", "bestAsk", "askPrice");
+        // London listings are usually quoted in pence; prices are kept in pounds like the instrument's currency
+        String quotedCurrency = extractText(payload, "currency", null);
+        BigDecimal scale = minorUnitScale(quotedCurrency);
+        BigDecimal quotedPrice = extractRequiredDecimal(payload, "price", "last", "lastPrice", "quote", "value");
+        BigDecimal price = inMajorUnits(quotedPrice, scale);
+        BigDecimal bid = inMajorUnits(extractOptionalDecimal(payload, quotedPrice, "bid", "bestBid", "bidPrice"), scale);
+        BigDecimal ask = inMajorUnits(extractOptionalDecimal(payload, quotedPrice, "ask", "bestAsk", "askPrice"), scale);
         Instant capturedAt = extractInstantOrNull(metadata, "asOf", "timestamp", "capturedAt");
         if (capturedAt == null) {
             capturedAt = extractInstantOrNull(payload, "timestamp", "capturedAt", "asOf");
@@ -207,10 +212,30 @@ public class FauxnanceQuoteClient implements QuoteProvider {
                 capturedAt
         );
         quote.setProviderStale(providerStale);
-        quote.setCurrency(extractText(payload, "currency", null));
+        quote.setCurrency(quotedCurrency == null ? null : tradingCurrency(quotedCurrency));
         quote.setChangePercent(extractOptionalDecimal(payload, null, "changePercent"));
-        quote.setPreviousClose(extractOptionalDecimal(payload, null, "previousClose"));
+        quote.setPreviousClose(inMajorUnits(extractOptionalDecimal(payload, null, "previousClose"), scale));
         return quote;
+    }
+
+    /** The currency an instrument settles in: pence (GBp/GBX) and other minor units map to their major currency. */
+    static String tradingCurrency(String providerCurrency) {
+        return minorUnitScale(providerCurrency).equals(BigDecimal.ONE)
+                ? providerCurrency.toUpperCase()
+                : "GBP";
+    }
+
+    // 100 when the provider quotes in pence (GBp, GBX), otherwise 1
+    private static BigDecimal minorUnitScale(String providerCurrency) {
+        if (providerCurrency == null) return BigDecimal.ONE;
+        return switch (providerCurrency) {
+            case "GBp", "GBX", "GBx" -> BigDecimal.valueOf(100);
+            default -> BigDecimal.ONE;
+        };
+    }
+
+    private static BigDecimal inMajorUnits(BigDecimal amount, BigDecimal scale) {
+        return amount == null || scale.equals(BigDecimal.ONE) ? amount : amount.divide(scale);
     }
 
     private String quotePathForMarket(String market) {

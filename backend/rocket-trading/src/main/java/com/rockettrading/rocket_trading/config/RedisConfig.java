@@ -1,6 +1,7 @@
 package com.rockettrading.rocket_trading.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,7 +21,7 @@ public class RedisConfig {
     /**
      * RedisTemplate bean for String keys and JSON-serialized values
      * Used for:
-     * - Order result cache (order:{orderId})
+     * - Finished-order cache (order:{clientId}:{orderId})
      * - Refresh token storage (refresh-token:{username})
      * - Rate limit counters (rate-limit:{clientId}:{minute})
      * - Analytics KPI cache (kpi:{metric}:{dimension})
@@ -34,7 +35,10 @@ public class RedisConfig {
         StringRedisSerializer stringSerializer = new StringRedisSerializer();
         
         // Use JSON serialization for values (flexible object support)
-        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper.copy().findAndRegisterModules());
+        // GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper.copy().findAndRegisterModules());
+        // JSON values; orders carry Instants, which plain Jackson cannot write (every cache write used to fail)
+        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer();
+        jsonSerializer.configure(mapper -> mapper.registerModule(new JavaTimeModule()));
 
         // String key-value operations
         template.setKeySerializer(stringSerializer);

@@ -72,11 +72,29 @@ services:
       timeout: 5s
       retries: 20
 
+  # BR-16: reporting has its own PostgreSQL server, so analyst queries never use trading capacity
+  reporting-db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${REPORTING_DB_NAME:-rocket_reporting}
+      POSTGRES_USER: ${REPORTING_DB_USERNAME:-rocket_reporting}
+      POSTGRES_PASSWORD: ${REPORTING_DB_PASSWORD:-rocket_reporting_password}
+    volumes:
+      - reporting_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
   api:
     build: backend/rocket-trading
     restart: unless-stopped
     depends_on:
       db:
+        condition: service_healthy
+      reporting-db:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -84,6 +102,9 @@ services:
         condition: service_healthy
     environment:
       DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-team_rocket_db}
+      REPORTING_DB_URL: jdbc:postgresql://reporting-db:5432/${REPORTING_DB_NAME:-rocket_reporting}
+      REPORTING_DB_USERNAME: ${REPORTING_DB_USERNAME:-rocket_reporting}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD:-rocket_reporting_password}
       DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
       DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
       JWT_SECRET: ${JWT_SECRET:-change-me-development-jwt-secret-1234567890}
@@ -98,10 +119,7 @@ services:
       FAUXNANCE_MAX_AGE_SECONDS: ${FAUXNANCE_MAX_AGE_SECONDS:-900}
       FAUXNANCE_ALLOW_STALE: ${FAUXNANCE_ALLOW_STALE:-true}
       FAUXNANCE_FX_MAX_AGE_SECONDS: ${FAUXNANCE_FX_MAX_AGE_SECONDS:-345600}
-      NEWS_BASE_URL: ${NEWS_BASE_URL:-https://finnhub.io/api/v1}
-      NEWS_API_KEY: ${NEWS_API_KEY:-}
-      NEWS_CACHE_SECONDS: ${NEWS_CACHE_SECONDS:-300}
-      NEWS_LOOKBACK_DAYS: ${NEWS_LOOKBACK_DAYS:-7}
+      PERPS_PRICE_FEED_ENABLED: ${PERPS_PRICE_FEED_ENABLED:-true}
       TRADING_DEFERRAL_RETRY_SECONDS: ${TRADING_DEFERRAL_RETRY_SECONDS:-300}
       TRADING_DEFERRAL_MAX_HOURS: ${TRADING_DEFERRAL_MAX_HOURS:-96}
       REPORTING_REFRESH_MS: ${REPORTING_REFRESH_MS:-30000}
@@ -131,14 +149,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      db:
+      reporting-db:
         condition: service_healthy
     environment:
-      DB_HOST: db
+      # Analytics reads the reporting database only; it has no access to the trading database (9.3)
+      DB_HOST: reporting-db
       DB_PORT: "5432"
-      DB_NAME: ${DB_NAME:-team_rocket_db}
-      DB_USERNAME: ${DB_USERNAME:-team_rocket_admin}
-      DB_PASSWORD: ${DB_PASSWORD:-team_rocket_password123}
+      DB_NAME: ${REPORTING_DB_NAME:-rocket_reporting}
+      DB_USERNAME: ${REPORTING_DB_USERNAME:-rocket_reporting}
+      DB_PASSWORD: ${REPORTING_DB_PASSWORD:-rocket_reporting_password}
+      # Verifies the same sign-in tokens as the trading API; analytics stays closed (503) until it is set
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_ISSUER: ${JWT_ISSUER:-rocket-trading}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4200}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -169,6 +192,7 @@ services:
 
 volumes:
   postgres_data:
+  reporting_data:
   redis_data:
   zookeeper_data:
   zookeeper_logs:

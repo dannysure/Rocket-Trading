@@ -5,9 +5,16 @@ import com.rockettrading.rocket_trading.model.Client;
 import com.rockettrading.rocket_trading.model.Session;
 import org.junit.jupiter.api.Test;
 
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Date;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class JwtServiceTest {
 
@@ -28,5 +35,23 @@ class JwtServiceTest {
         assertEquals(42L, authenticatedClient.clientId());
         assertEquals(1001L, authenticatedClient.sessionId());
         assertEquals("joanna@example.com", authenticatedClient.email());
+    }
+
+    @Test
+    void neverAcceptsTokensSignedWithThePublishedDevelopmentSecret() {
+        JwtProperties jwtProperties = new JwtProperties();
+        jwtProperties.setIssuer("rocket-trading");
+        jwtProperties.setSecret(JwtService.PUBLISHED_DEVELOPMENT_SECRET);
+        JwtService jwtService = new JwtService(jwtProperties);
+
+        // Anyone who has read .env.example could mint this operations token
+        String forged = Jwts.builder()
+                .issuer("rocket-trading")
+                .expiration(Date.from(Instant.now().plusSeconds(300)))
+                .claim("clientId", 1L).claim("sessionId", 1L).claim("role", "OPERATIONS")
+                .signWith(Keys.hmacShaKeyFor(JwtService.PUBLISHED_DEVELOPMENT_SECRET.getBytes(StandardCharsets.UTF_8)))
+                .compact();
+
+        assertThrows(JwtException.class, () -> jwtService.parseToken(forged));
     }
 }

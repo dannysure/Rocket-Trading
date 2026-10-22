@@ -90,7 +90,8 @@ app = FastAPI(
 # CORS middleware for frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure based on deployment
+    # Only the trading front end may call analytics from a browser (BRD 9.3)
+    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:4200")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

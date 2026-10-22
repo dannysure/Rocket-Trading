@@ -8,85 +8,52 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Cache service for order results
- * Reduces database queries for frequently accessed orders
- * TTL: 30 seconds (order status changes frequently)
+ * Caches finished (FILLED or REJECTED) orders, which never change again, so a cached entry can never
+ * show an out-of-date status (BR-07). Entries are keyed by the owning client as well as the order, so
+ * a lookup can only ever return the caller's own order (BR-02).
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "spring.redis.enabled", havingValue = "true", matchIfMissing = true)
 public class OrderCacheService {
+    private static final Set<String> FINAL_STATUSES = Set.of("FILLED", "REJECTED");
+    private static final String CACHE_KEY_PREFIX = "order:";
 
     private final RedisTemplate<String, Object> redisTemplate;
 
     @Value("${redis.cache.order.ttl:30}")
     private long orderCacheTtl;
 
-    private static final String CACHE_KEY_PREFIX = "order:";
-
-    /**
-     * Store order result in cache
-     * Key format: "order:{orderId}"
-     */
-    public void cacheOrder(long orderId, OrderResponse order) {
+    /** Stores the order only once it is final; orders still in flight are always read from the database. */
+    public void cacheOrder(long clientId, OrderResponse order) {
+        if (!FINAL_STATUSES.contains(order.status())) {
+            return;
+        }
         try {
-            String key = CACHE_KEY_PREFIX + orderId;
-            redisTemplate.opsForValue().set(key, order, orderCacheTtl, TimeUnit.SECONDS);
-            log.debug("Cached order {}: {} (TTL: {}s)", orderId, order.status(), orderCacheTtl);
+            redisTemplate.opsForValue().set(key(clientId, order.orderId()), order, orderCacheTtl, TimeUnit.SECONDS);
         } catch (Exception e) {
-            log.warn("Failed to cache order {}: {}", orderId, e.getMessage());
-            // Don't throw - cache failures should not block order operations
+            // Cache failures must not block order operations
+            log.warn("Failed to cache order {}: {}", order.orderId(), e.getMessage());
         }
     }
 
-    /**
-     * Retrieve order from cache
-     * Returns null if not found or expired
-     */
-    public OrderResponse getOrder(long orderId) {
+    /** The caller's own cached order, or null if it is not cached (or belongs to someone else). */
+    public OrderResponse getOrder(long clientId, long orderId) {
         try {
-            String key = CACHE_KEY_PREFIX + orderId;
-            Object cached = redisTemplate.opsForValue().get(key);
-            if (cached instanceof OrderResponse order) {
-                log.debug("Cache hit for order {}", orderId);
-                return order;
-            }
-            return null;
+            Object cached = redisTemplate.opsForValue().get(key(clientId, orderId));
+            return cached instanceof OrderResponse order ? order : null;
         } catch (Exception e) {
             log.warn("Failed to retrieve cached order {}: {}", orderId, e.getMessage());
             return null; // Fall back to database
         }
     }
 
-    /**
-     * Invalidate order cache (when order status changes)
-     * Called after order.filled or order.rejected events
-     */
-    public void invalidateOrder(long orderId) {
-        try {
-            String key = CACHE_KEY_PREFIX + orderId;
-            Boolean deleted = redisTemplate.delete(key);
-            log.debug("Invalidated order cache for {}: {}", orderId, deleted);
-        } catch (Exception e) {
-            log.warn("Failed to invalidate order cache {}: {}", orderId, e.getMessage());
-        }
-    }
-
-    /**
-     * Check if order is in cache
-     */
-    public boolean isOrderCached(long orderId) {
-        try {
-            String key = CACHE_KEY_PREFIX + orderId;
-            Boolean exists = redisTemplate.hasKey(key);
-            return exists != null && exists;
-        } catch (Exception e) {
-            log.warn("Failed to check cache for order {}: {}", orderId, e.getMessage());
-            return false;
-        }
+    static String key(long clientId, long orderId) {
+        return CACHE_KEY_PREFIX + clientId + ":" + orderId;
     }
 }

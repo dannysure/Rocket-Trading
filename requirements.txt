@@ -12,3 +12,5 @@ confluent-kafka>=2.0.0
 redis>=5.0.0
 # HTTP requests
 requests>=2.31.0
+# Verifies trading API sign-in tokens for analytics (api/auth.py)
+PyJWT>=2.8.0

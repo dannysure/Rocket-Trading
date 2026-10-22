@@ -88,4 +88,23 @@ class FauxnanceQuoteClientTest {
         assertEquals(0, new java.math.BigDecimal("345.3").compareTo(candles.get(0).high()));
         assertEquals(java.time.LocalDate.parse("2026-10-12"), candles.get(1).date());
     }
+
+    @Test
+    void londonQuotesInPenceArePricedInPounds() throws Exception {
+        FauxnanceQuoteClient client = new FauxnanceQuoteClient(mock(RestClient.class), new FauxnanceProperties());
+        String response = """
+                {"data": {"symbol": "VOD.L", "currency": "GBp", "price": 7250, "bid": 7240, "ask": 7260,
+                          "previousClose": 7100, "asOf": "2026-09-24T15:00:00Z"},
+                 "meta": {"asOf": "2026-09-24T15:00:00Z", "stale": false}}
+                """;
+
+        Quote quote = client.mapQuoteResponse(objectMapper.readTree(response), "VOD.L");
+
+        assertEquals(0, new java.math.BigDecimal("72.40").compareTo(quote.getBid()));
+        assertEquals(0, new java.math.BigDecimal("72.60").compareTo(quote.getAsk()));
+        assertEquals(0, new java.math.BigDecimal("71.00").compareTo(quote.getPreviousClose()));
+        assertEquals("GBP", quote.getCurrency());
+        assertEquals("GBP", FauxnanceQuoteClient.tradingCurrency("GBX"));
+        assertEquals("USD", FauxnanceQuoteClient.tradingCurrency("usd"));
+    }
 }

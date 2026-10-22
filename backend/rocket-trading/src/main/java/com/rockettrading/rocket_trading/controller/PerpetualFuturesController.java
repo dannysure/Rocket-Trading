@@ -4,12 +4,15 @@ import com.rockettrading.rocket_trading.dto.common.ApiResponse;
 import com.rockettrading.rocket_trading.dto.perps.*;
 import com.rockettrading.rocket_trading.exception.ConflictException;
 import com.rockettrading.rocket_trading.security.AuthenticatedClient;
+import com.rockettrading.rocket_trading.service.PerpMarketStream;
 import com.rockettrading.rocket_trading.service.PerpetualFuturesService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -17,9 +20,11 @@ import java.util.List;
 @RequestMapping("/api/v1/perps")
 public class PerpetualFuturesController {
     private final PerpetualFuturesService perpetualFuturesService;
+    private final PerpMarketStream marketStream;
 
-    public PerpetualFuturesController(PerpetualFuturesService perpetualFuturesService) {
+    public PerpetualFuturesController(PerpetualFuturesService perpetualFuturesService, PerpMarketStream marketStream) {
         this.perpetualFuturesService = perpetualFuturesService;
+        this.marketStream = marketStream;
     }
 
     @GetMapping("/markets")
@@ -27,9 +32,28 @@ public class PerpetualFuturesController {
         return ResponseEntity.ok(ApiResponse.success(perpetualFuturesService.listMarkets()));
     }
 
+    /** Every active market's ticker in one call, as the stream pushes them. */
+    @GetMapping("/tickers")
+    public ResponseEntity<ApiResponse<List<PerpTickerResponse>>> listTickers() {
+        return ResponseEntity.ok(ApiResponse.success(perpetualFuturesService.listTickers()));
+    }
+
     @GetMapping("/markets/{symbol}/ticker")
     public ResponseEntity<ApiResponse<PerpTickerResponse>> getTicker(@PathVariable String symbol) {
         return ResponseEntity.ok(ApiResponse.success(perpetualFuturesService.getTicker(symbol)));
+    }
+
+    /** Spot index candles for the chart; interval is in seconds (60, 300, 900 or 3600). */
+    @GetMapping("/markets/{symbol}/candles")
+    public ResponseEntity<ApiResponse<List<PerpCandleResponse>>> getCandles(@PathVariable String symbol,
+                                                                            @RequestParam(defaultValue = "60") int interval) {
+        return ResponseEntity.ok(ApiResponse.success(perpetualFuturesService.getCandles(symbol, interval)));
+    }
+
+    /** Live tickers for every market as server-sent events ("tickers", a JSON array), several times a second. */
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream() {
+        return marketStream.subscribe();
     }
 
     @GetMapping("/account")

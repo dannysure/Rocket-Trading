@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, map } from 'rxjs';
-import { API_BASE_URL, ApiResponse } from './api.service';
-import { OrderSide, PerpSide } from './perps.math';
+import { API_BASE_URL, ApiResponse, SessionStore } from './api.service';
+import { Candle, OrderSide, PerpSide } from './perps.math';
 
 export interface PerpMarket {
   symbol: string;
@@ -12,18 +12,27 @@ export interface PerpMarket {
   maxLeverage: number;
   takerFeeRate: number;
   maintenanceMarginRate: number;
+  // Net long size that would put the mark 100% over the index; the premium is capped at maxPremium
+  skewScale: number;
+  maxPremium: number;
 }
 
 export interface PerpTicker {
   symbol: string;
+  // Perp price: spot plus the premium the long/short open-interest imbalance sets
   markPrice: number;
+  // Spot index (Coinbase mid)
   oraclePrice: number;
   bid: number;
   ask: number;
-  // Hourly rate, e.g. 0.0000125 = 0.00125% per hour; positive means longs pay shorts
+  // (mark - spot) / spot
+  premium: number;
+  // Charged on the hour: premium / 8, e.g. 0.000075 = 0.0075%; positive means longs pay shorts
   fundingRate: number;
   nextFundingAt: string;
   openInterest: number;
+  longOpenInterest: number;
+  shortOpenInterest: number;
   maxLeverage: number;
   takerFeeRate: number;
   maintenanceMarginRate: number;
@@ -107,9 +116,15 @@ export class PerpsApi {
     return this.http.get<ApiResponse<PerpMarket[]>>(`${this.base}/markets`).pipe(map((r) => r.data));
   }
 
-  ticker(symbol: string): Observable<PerpTicker> {
+  /** Every market's ticker, as the live stream pushes them; used to fill the page before live updates start. */
+  tickers(): Observable<PerpTicker[]> {
+    return this.http.get<ApiResponse<PerpTicker[]>>(`${this.base}/tickers`).pipe(map((r) => r.data));
+  }
+
+  /** Spot index candles, oldest first; intervalSeconds is 60, 300, 900 or 3600. */
+  candles(symbol: string, intervalSeconds: number): Observable<Candle[]> {
     return this.http
-      .get<ApiResponse<PerpTicker>>(`${this.base}/markets/${encodeURIComponent(symbol)}/ticker`)
+      .get<ApiResponse<Candle[]>>(`${this.base}/markets/${encodeURIComponent(symbol)}/candles`, { params: { interval: intervalSeconds } })
       .pipe(map((r) => r.data));
   }
 
@@ -129,5 +144,71 @@ export class PerpsApi {
 
   funding(): Observable<PerpFunding[]> {
     return this.http.get<ApiResponse<PerpFunding[]>>(`${this.base}/funding`).pipe(map((r) => r.data));
+  }
+}
+
+/** An HTTP failure of the price stream; status 0 means the network failed or the stream ended. */
+export class PerpStreamError extends Error {
+  constructor(readonly status: number) {
+    super(`Perps price stream failed (${status})`);
+  }
+}
+
+/**
+ * Live tickers for every market, pushed by the server several times a second. Uses fetch rather than
+ * EventSource so the request can carry the bearer token.
+ */
+@Injectable({ providedIn: 'root' })
+export class PerpsStream {
+  private readonly sessions = inject(SessionStore);
+
+  tickers(): Observable<PerpTicker[]> {
+    return new Observable<PerpTicker[]>((subscriber) => {
+      const controller = new AbortController();
+      const token = this.sessions.session()?.token;
+      fetch(`${API_BASE_URL}/perps/stream`, {
+        headers: { Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok || !response.body) throw new PerpStreamError(response.status);
+          const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+          const events = new ServerSentEvents((data) => subscriber.next(JSON.parse(data) as PerpTicker[]));
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            events.push(value);
+          }
+          // The server ends the stream after a while; the caller decides whether to reconnect
+          subscriber.error(new PerpStreamError(0));
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          subscriber.error(error instanceof PerpStreamError ? error : new PerpStreamError(0));
+        });
+      return () => controller.abort();
+    });
+  }
+}
+
+/** Incremental parser for a text/event-stream body: calls onData with each event's data. */
+export class ServerSentEvents {
+  private buffer = '';
+
+  constructor(private readonly onData: (data: string) => void) {}
+
+  push(chunk: string): void {
+    this.buffer += chunk.replace(/\r\n?/g, '\n');
+    let end: number;
+    while ((end = this.buffer.indexOf('\n\n')) >= 0) {
+      const event = this.buffer.slice(0, end);
+      this.buffer = this.buffer.slice(end + 2);
+      const data = event.split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).replace(/^ /, ''))
+        .join('\n');
+      if (data) this.onData(data);
+    }
   }
 }
