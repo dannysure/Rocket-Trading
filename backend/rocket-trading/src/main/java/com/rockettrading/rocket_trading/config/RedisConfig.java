@@ -1,5 +1,6 @@
 package com.rockettrading.rocket_trading.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -26,13 +27,15 @@ public class RedisConfig {
      * - Analytics KPI cache (kpi:{metric}:{dimension})
      */
     @Bean
-    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
         // Use StringRedisSerializer for keys (human-readable in Redis CLI)
         StringRedisSerializer stringSerializer = new StringRedisSerializer();
         
+        // Use JSON serialization for values (flexible object support)
+        // GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper.copy().findAndRegisterModules());
         // JSON values; orders carry Instants, which plain Jackson cannot write (every cache write used to fail)
         GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer();
         jsonSerializer.configure(mapper -> mapper.registerModule(new JavaTimeModule()));

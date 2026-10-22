@@ -4,6 +4,7 @@ import com.rockettrading.rocket_trading.dto.common.ApiErrorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rockettrading.rocket_trading.security.JwtAuthenticationFilter;
 import com.rockettrading.rocket_trading.security.RestAuthenticationEntryPoint;
+import com.rockettrading.rocket_trading.service.OAuthUserService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import jakarta.servlet.DispatcherType;
@@ -21,14 +22,20 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Configuration
 public class SecurityConfig {
+
+        @Value("${app.frontend.url:http://localhost:4200}")
+        private String frontendUrl;
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity,
@@ -36,6 +43,7 @@ public class SecurityConfig {
                                             RestAuthenticationEntryPoint restAuthenticationEntryPoint,
                                             AccessDeniedHandler accessDeniedHandler,
                                             OAuth2AuthenticationSuccessHandler oauth2SuccessHandler,
+                                            OAuthUserService oauthUserService,
                                             ObjectProvider<ClientRegistrationRepository> oauthRegistrations,
                                             CorsConfigurationSource corsConfigurationSource) throws Exception {
         httpSecurity
@@ -68,13 +76,25 @@ public class SecurityConfig {
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
-        // GitHub sign-in is only wired up when its credentials are configured
+        // OAuth sign-in is only wired up when at least one provider is configured
         if (oauthRegistrations.getIfAvailable() != null) {
-            httpSecurity.oauth2Login(oauth2 -> oauth2.successHandler(oauth2SuccessHandler));
+            httpSecurity.oauth2Login(oauth2 -> oauth2
+                    .userInfoEndpoint(userInfo -> userInfo.userService(oauthUserService))
+                    .successHandler(oauth2SuccessHandler)
+                    .failureHandler(oauthFailureHandler()));
         }
 
         return httpSecurity.build();
     }
+
+        private AuthenticationFailureHandler oauthFailureHandler() {
+                return (request, response, exception) -> {
+                        String message = exception.getMessage() != null ? exception.getMessage() : "OAuth sign-in failed";
+                        String redirectUrl = frontendUrl + "/auth/callback?error="
+                                        + URLEncoder.encode(message, StandardCharsets.UTF_8);
+                        response.sendRedirect(redirectUrl);
+                };
+        }
 
     @Bean
     PasswordEncoder passwordEncoder() {

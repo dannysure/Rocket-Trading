@@ -1,7 +1,8 @@
+import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, effect, inject, input, signal, untracked } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { catchError, of } from 'rxjs';
-import { Candle, Instrument, MarketApi, Quote, Segment, WatchlistApi, errorMessage } from './api.service';
+import { Candle, Instrument, MarketApi, NewsApi, NewsArticle, Quote, Segment, WatchlistApi, errorMessage } from './api.service';
 import { NavHeaderComponent } from './nav-header.component';
 import { TradeTicketComponent } from './trade-ticket.component';
 import { InstrumentSearchComponent } from './instrument-search.component';
@@ -15,7 +16,7 @@ const RANGES = [
 
 @Component({
   selector: 'app-trade',
-  imports: [NavHeaderComponent, TradeTicketComponent, InstrumentSearchComponent],
+  imports: [DatePipe, RouterLink, NavHeaderComponent, TradeTicketComponent, InstrumentSearchComponent],
   template: `
     <app-nav-header />
     <main class="page">
@@ -115,6 +116,26 @@ const RANGES = [
             <app-trade-ticket [instrument]="instrument" />
           </section>
         </div>
+        <section class="card stock-news" aria-labelledby="stock-news-title">
+          <div class="card-head">
+            <div><p class="eyebrow">Market intelligence</p><h2 id="stock-news-title">{{ fmt.displaySymbol(instrument.symbol) }} news</h2></div>
+            <a routerLink="/news" class="link">Broader market news →</a>
+          </div>
+          @if (newsLoading()) {
+            <p class="skeleton">Loading stories…</p>
+          } @else if (news().length) {
+            <div class="stock-news-list">
+              @for (article of news().slice(0, 5); track article.id) {
+                <a class="stock-news-item" [href]="article.url" target="_blank" rel="noopener noreferrer">
+                  <span class="news-meta">{{ article.source }} · {{ article.publishedAt | date: 'MMM d, y' }}</span>
+                  <strong>{{ article.headline }}</strong><span class="arrow" aria-hidden="true">↗</span>
+                </a>
+              }
+            </div>
+          } @else {
+            <p class="empty">No recent stories found for this instrument.</p>
+          }
+        </section>
       }
     </main>
   `,
@@ -153,6 +174,14 @@ const RANGES = [
     .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 16px; margin: 24px 0 0; padding-top: 20px; border-top: 1px solid var(--border); }
     .stats dt { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
     .stats dd { margin: 0; font-size: 15px; font-weight: 600; }
+    .stock-news { margin-top: 24px; }
+    .stock-news .card-head { align-items: flex-start; }
+    .stock-news-list { display: flex; flex-direction: column; }
+    .stock-news-item { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 13px 0; border-top: 1px solid var(--border); }
+    .stock-news-item strong { font-size: 14px; line-height: 1.35; }
+    .news-meta { color: var(--text-muted); font-size: 12px; }
+    .arrow { color: var(--brand); font-size: 18px; }
+    @media (max-width: 640px) { .stock-news-item { grid-template-columns: 1fr auto; } .stock-news-item .news-meta { grid-column: 1 / -1; } }
   `],
 })
 export class TradeComponent implements OnInit {
@@ -160,6 +189,7 @@ export class TradeComponent implements OnInit {
   readonly symbol = input<string>();
 
   private readonly market = inject(MarketApi);
+  private readonly newsApi = inject(NewsApi);
   private readonly watchlistApi = inject(WatchlistApi);
   private readonly router = inject(Router);
 
@@ -177,6 +207,8 @@ export class TradeComponent implements OnInit {
   protected readonly rangeDays = signal(30);
   protected readonly watchedSymbols = signal<Set<string>>(new Set());
   protected readonly loadError = signal('');
+  protected readonly news = signal<NewsArticle[]>([]);
+  protected readonly newsLoading = signal(false);
 
   protected readonly segmentInstruments = computed(() => this.instruments().filter((i) => i.segment === this.segment()));
   protected readonly watched = computed(() => this.watchedSymbols().has(this.selected()?.symbol ?? ''));
@@ -261,9 +293,16 @@ export class TradeComponent implements OnInit {
     this.router.navigate([], { queryParams: { symbol: instrument.symbol }, replaceUrl: true });
     this.quote.set(null);
     this.quoteError.set('');
+    this.news.set([]);
+    this.newsLoading.set(true);
     this.market.quote(instrument.symbol).subscribe({
       next: (q) => { if (this.selected()?.symbol === instrument.symbol) this.quote.set(q); },
       error: (e) => this.quoteError.set(errorMessage(e, 'No price available right now.')),
+    });
+    this.newsApi.forSymbol(instrument.symbol).pipe(catchError(() => of([] as NewsArticle[]))).subscribe((articles) => {
+      if (this.selected()?.symbol !== instrument.symbol) return;
+      this.news.set(articles);
+      this.newsLoading.set(false);
     });
   }
 

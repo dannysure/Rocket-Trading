@@ -2,6 +2,7 @@ import { inject } from '@angular/core';
 import { CanActivateFn, Router, Routes } from '@angular/router';
 import { Role, SessionStore } from './api.service';
 import { LoginComponent } from './login.component';
+import { AdminLoginComponent } from './admin-login.component';
 import { CallbackComponent } from './callback.component';
 import { CompleteProfileComponent } from './complete-profile.component';
 import { DashboardComponent } from './dashboard.component';
@@ -9,6 +10,10 @@ import { TradeComponent } from './trade.component';
 import { BlotterComponent } from './blotter.component';
 import { InsightsComponent } from './insights.component';
 import { OpsComponent } from './ops.component';
+import { NewsComponent } from './news.component';
+import {
+  HelpSupportComponent, KycVerificationComponent, ProfileSettingsComponent, SecuritySettingsComponent, TaxDocumentsComponent,
+} from './account-pages.component';
 
 /** Lets a signed-in person with one of the roles through; anyone else goes to sign-in or their own home. */
 export function requireRole(...roles: Role[]): CanActivateFn {
@@ -37,11 +42,19 @@ export const routeToHome: CanActivateFn = () => {
 export const routes: Routes = [
   { path: '', pathMatch: 'full', canActivate: [routeToHome], children: [] },
   { path: 'login', component: LoginComponent, canActivate: [signedOutOnly], title: 'Sign in · Rocket Trading' },
+  { path: 'admin/login', component: AdminLoginComponent, canActivate: [signedOutOnly], title: 'Admin sign in · Rocket Trading' },
   { path: 'auth/callback', component: CallbackComponent, title: 'Signing in · Rocket Trading' },
   { path: 'complete-profile', component: CompleteProfileComponent, canActivate: [requireRole('CLIENT')], title: 'Your profile · Rocket Trading' },
 
+  { path: 'profile-settings', component: ProfileSettingsComponent, canActivate: [requireRole('CLIENT', 'ANALYST', 'OPERATIONS')], title: 'Profile settings · Rocket Trading' },
+  { path: 'tax-documents', component: TaxDocumentsComponent, canActivate: [requireRole('CLIENT', 'ANALYST', 'OPERATIONS')], title: 'Tax documents · Rocket Trading' },
+  { path: 'security-settings', component: SecuritySettingsComponent, canActivate: [requireRole('CLIENT', 'ANALYST', 'OPERATIONS')], title: 'Security settings · Rocket Trading' },
+  { path: 'help-support', component: HelpSupportComponent, canActivate: [requireRole('CLIENT', 'ANALYST', 'OPERATIONS')], title: 'Help and support · Rocket Trading' },
+  { path: 'kyc', component: KycVerificationComponent, canActivate: [requireRole('CLIENT', 'ANALYST', 'OPERATIONS')], title: 'KYC verification · Rocket Trading' },
+
   { path: 'dashboard', component: DashboardComponent, canActivate: [requireRole('CLIENT')], title: 'Dashboard · Rocket Trading' },
   { path: 'trade', component: TradeComponent, canActivate: [requireRole('CLIENT')], title: 'Markets · Rocket Trading' },
+  { path: 'news', component: NewsComponent, canActivate: [requireRole('CLIENT')], title: 'News · Rocket Trading' },
   { path: 'blotter', component: BlotterComponent, canActivate: [requireRole('CLIENT')], title: 'Blotter · Rocket Trading' },
   // Lazy: the perps page and its chart are only downloaded by clients who open it
   { path: 'perps', loadComponent: () => import('./perps.component').then((m) => m.PerpsComponent), canActivate: [requireRole('CLIENT')], title: 'Perpetuals · Rocket Trading' },

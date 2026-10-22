@@ -65,6 +65,7 @@ class RestartRecoveryIT {
                 "--server.port=0", "--spring.datasource.url=" + postgres.getJdbcUrl(),
                 "--spring.datasource.username=" + postgres.getUsername(), "--spring.datasource.password=" + postgres.getPassword(),
                 "--trading.worker.enabled=" + worker, "--trading.worker.delay-ms=100", "--spring.main.banner-mode=off",
-                "--fixtures.password=", "--catalog.sync.enabled=false");
+                "--fixtures.password=", "--catalog.sync.enabled=false", "--spring.kafka.enabled=false",
+                "--spring.redis.enabled=false");
     }
 }

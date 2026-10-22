@@ -72,6 +72,17 @@ export interface Candle {
   close: number;
 }
 
+export interface NewsArticle {
+  id: string;
+  headline: string;
+  summary: string;
+  source: string;
+  url: string;
+  imageUrl: string;
+  publishedAt: string;
+  symbols: string[];
+}
+
 export interface IndicativePrice {
   symbol: string;
   name: string;
@@ -380,10 +391,6 @@ export class AuthApi {
   private readonly http = inject(HttpClient);
   private readonly sessions = inject(SessionStore);
 
-  providers(): Observable<{ password: boolean; github: boolean }> {
-    return this.http.get<ApiResponse<{ password: boolean; github: boolean }>>(`${API_BASE_URL}/auth/providers`).pipe(map((r) => r.data));
-  }
-
   signIn(email: string, password: string): Observable<SessionResponse> {
     return this.http
       .post<ApiResponse<SessionResponse>>(`${API_BASE_URL}/auth/sign-in`, { email, password })
@@ -394,7 +401,7 @@ export class AuthApi {
     return this.http.post(`${API_BASE_URL}/auth/register`, request);
   }
 
-  /** Exchanges the one-time token from the GitHub redirect for this browser's session. */
+  /** Exchanges the one-time token from the Google redirect for this browser's session. */
   completeOAuth(redirectToken: string): Observable<{ session: StoredSession; profileComplete: boolean }> {
     return this.http
       .post<ApiResponse<{ clientId: number; email: string; name: string; accessToken: string; expiresIn: number; role: Role; profileComplete?: boolean }>>(
@@ -418,8 +425,8 @@ export class AuthApi {
       );
   }
 
-  githubSignInUrl(): string {
-    return `${API_BASE_URL}/oauth2/authorization/github`;
+  googleSignInUrl(): string {
+    return `${API_BASE_URL}/oauth2/authorization/google`;
   }
 
   updateProfile(profile: { name: string; dateOfBirth: string; riskProfile: string }): Observable<unknown> {
@@ -499,6 +506,19 @@ export class MarketApi {
         params: { side, quantity },
       })
       .pipe(map((r) => r.data));
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class NewsApi {
+  private readonly http = inject(HttpClient);
+
+  market(): Observable<NewsArticle[]> {
+    return this.http.get<ApiResponse<NewsArticle[]>>(`${API_BASE_URL}/news/market`).pipe(map((r) => r.data));
+  }
+
+  forSymbol(symbol: string): Observable<NewsArticle[]> {
+    return this.http.get<ApiResponse<NewsArticle[]>>(`${API_BASE_URL}/news/${encodeURIComponent(symbol)}`).pipe(map((r) => r.data));
   }
 }
 

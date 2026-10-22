@@ -67,26 +67,21 @@ public class OAuthUserService extends DefaultOAuth2UserService {
   /**
    * Process OAuth user: load or create from database
    */
-  private OAuth2User processOAuthUser(OAuth2UserRequest userRequest, OAuth2User oAuth2User) {
+  OAuth2User processOAuthUser(OAuth2UserRequest userRequest, OAuth2User oAuth2User) {
     String registrationId = userRequest.getClientRegistration().getRegistrationId();
     String email = getEmailFromOAuth2User(oAuth2User, registrationId);
     String name = getNameFromOAuth2User(oAuth2User, registrationId);
-    String login = oAuth2User.getAttribute("login");
+    String providerId = getProviderId(oAuth2User, registrationId);
 
-    // If email is not available (e.g., GitHub user has private email), use login as fallback
+    // Google supplies an email address required to identify the trading account.
     if (email == null || email.isEmpty()) {
-      if (login != null && !login.isEmpty()) {
-        email = login + "@github.local";
-        log.warn("Email not available from GitHub, using login-based email: {}", email);
-      } else {
-        throw new RuntimeException("Could not extract email or login from " + registrationId + " provider");
-      }
+      throw new RuntimeException("Could not extract email from " + registrationId + " provider");
     }
 
     // Use name from OAuth or fallback to login or email prefix
     if (name == null || name.isEmpty()) {
-      if (login != null && !login.isEmpty()) {
-        name = login;
+      if (providerId != null && !providerId.isEmpty()) {
+        name = providerId;
       } else {
         name = email.split("@")[0];
       }
@@ -130,27 +125,24 @@ public class OAuthUserService extends DefaultOAuth2UserService {
     );
   }
 
-  /**
-   * Extract email from OAuth2User attributes (GitHub provider)
-   */
   private String getEmailFromOAuth2User(OAuth2User oAuth2User, String registrationId) {
     return oAuth2User.getAttribute("email");
   }
 
-  /**
-   * Extract name from OAuth2User attributes (GitHub provider)
-   */
   private String getNameFromOAuth2User(OAuth2User oAuth2User, String registrationId) {
     String name = oAuth2User.getAttribute("name");
     return name != null ? name : oAuth2User.getAttribute("login");
   }
 
+  private String getProviderId(OAuth2User oAuth2User, String registrationId) {
+    return oAuth2User.getAttribute("sub");
+  }
+
   /**
-   * Get the attribute name key for GitHub provider
-   * Used to identify the principal attribute
+   * Get the provider-specific attribute used to identify the principal.
    */
   private String getAttributeNameKey(String registrationId) {
-    return "id";
+    return "sub";
   }
 
   /**

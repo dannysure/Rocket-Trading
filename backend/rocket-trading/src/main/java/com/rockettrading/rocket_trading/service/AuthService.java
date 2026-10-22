@@ -117,7 +117,7 @@ public class AuthService {
     }
 
     /**
-     * Exchanges the one-time token from the GitHub redirect for the session the browser keeps,
+    * Exchanges the one-time token from the Google redirect for the session the browser keeps,
      * and revokes the redirect token's session so it cannot be replayed from browser history.
      */
     public OAuthLoginResponse getOAuthUserInfo(AuthenticatedClient redirectSession) {

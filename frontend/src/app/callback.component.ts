@@ -4,7 +4,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthApi, SessionStore, errorMessage } from './api.service';
 import { BrandMarkComponent } from './brand-mark.component';
 
-/** Landing page for the GitHub redirect: swaps the one-time token for a session. */
+/** Landing page for the Google redirect: swaps the one-time token for a session. */
 @Component({
   selector: 'app-auth-callback',
   imports: [RouterLink, BrandMarkComponent],
@@ -18,7 +18,7 @@ import { BrandMarkComponent } from './brand-mark.component';
           <a routerLink="/login" class="btn btn-primary btn-block">Back to sign in</a>
         } @else {
           <h1>Signing you in…</h1>
-          <p class="hint" role="status">Confirming your GitHub account.</p>
+          <p class="hint" role="status">Confirming your Google account.</p>
         }
       </div>
     </main>
@@ -44,7 +44,7 @@ export class CallbackComponent implements OnInit {
     const params = this.route.snapshot.queryParamMap;
     const token = params.get('token');
     if (params.get('error') || !token) {
-      this.failure.set(params.get('error') || 'No sign-in token was received from GitHub.');
+      this.failure.set(params.get('error') || 'No sign-in token was received from Google.');
       return;
     }
     // Drop the token from the address bar and history before using it
@@ -53,7 +53,7 @@ export class CallbackComponent implements OnInit {
       // Only clients who have not yet given a date of birth are asked for it
       next: ({ session, profileComplete }) =>
         this.router.navigateByUrl(session.role === 'CLIENT' && !profileComplete ? '/complete-profile' : this.sessions.homeRoute()),
-      error: (e) => this.failure.set(errorMessage(e, 'GitHub sign-in failed.')),
+      error: (e) => this.failure.set(errorMessage(e, 'Google sign-in failed.')),
     });
   }
 }

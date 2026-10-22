@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * Response returned by OAuth callback endpoint
- * Frontend uses this to extract user info after GitHub OAuth redirect
+ * Frontend uses this to extract user info after Google OAuth redirect
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record OAuthLoginResponse(
@@ -35,7 +35,7 @@ public record OAuthLoginResponse(
                 accessToken,
                 "Bearer",
                 expiresIn,
-                "github",
+                "google",
                 null,
                 role,
                 profileComplete
