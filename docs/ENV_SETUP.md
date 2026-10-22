@@ -54,16 +54,6 @@ OAUTH_GOOGLE_TOKEN_URI=https://oauth2.googleapis.com/token
 OAUTH_GOOGLE_USERINFO_URI=https://openidconnect.googleapis.com/v1/userinfo
 ```
 
-#### GitHub OAuth
-```env
-OAUTH_PROVIDER=github
-OAUTH_GITHUB_CLIENT_ID=xxxxx
-OAUTH_GITHUB_CLIENT_SECRET=xxxxx
-OAUTH_GITHUB_AUTH_URI=https://github.com/login/oauth/authorize
-OAUTH_GITHUB_TOKEN_URI=https://github.com/login/oauth/access_token
-OAUTH_GITHUB_USERINFO_URI=https://api.github.com/user
-```
-
 #### Microsoft/Azure AD
 ```env
 OAUTH_PROVIDER=microsoft

@@ -34,8 +34,8 @@ blotter (orders poll for status changes and show the audit timeline); analysts a
 Insights and Trade lookup.
 The starting catalogue is AAPL, MSFT, GOOGL, BTCUSD and ETHUSD.
 
-A valid quote-provider key is needed to price orders. Sign-in is email and password; GitHub sign-in
-is offered too when `OAUTH_GITHUB_CLIENT_ID`/`SECRET` are set. Set `FIXTURE_PASSWORD` in `.env` to get
+A valid quote-provider key is needed to price orders. Clients sign in with Google; administrators use
+`/admin/login` with a username or email and password. Set `FIXTURE_PASSWORD` in `.env` to get
 the demo accounts: `joanna@example.com` (client), `priya@rocket.internal` (analyst: Insights) and
 `david@rocket.internal` (operations: Insights and Trade lookup).
 

@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-@EnableConfigurationProperties({JwtProperties.class, FauxnanceProperties.class, NewsProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, FauxnanceProperties.class, NewsProperties.class, PerpsProperties.class})
 public class AppConfig {
 
     @Bean

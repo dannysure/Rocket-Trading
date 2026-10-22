@@ -25,9 +25,6 @@ services:
   # Override API for e2e with proper environment
   api:
     environment:
-      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-test-client-id}
-      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-test-client-secret}
-      OAUTH_REDIRECT_URI: http://localhost:8081/login/oauth2/code/github
       OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
       OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
       OAUTH_GOOGLE_REDIRECT_URI: http://localhost:8081/login/oauth2/code/google
