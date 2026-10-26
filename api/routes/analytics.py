@@ -5,6 +5,7 @@ Redis-cached KPI endpoints
 
 import hmac
 import os
+from typing import Literal
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -50,7 +51,7 @@ def get_redis() -> redis.Redis:
 
 @router.get("/kpis")
 def get_kpis(
-    period: str = Query("day", enum=["minute", "hour", "day"]),
+    period: Literal["minute", "hour", "day"] = Query("day"),
     db: Session = Depends(get_db),
     redis_client: redis.Redis = Depends(get_redis)
 ):
@@ -112,7 +113,7 @@ def get_cache_stats(redis_client: redis.Redis = Depends(get_redis)):
 
 @router.post("/cache/clear")
 def clear_cache(
-    period: str = Query("day", enum=["minute", "hour", "day", "all"]),
+    period: Literal["minute", "hour", "day", "all"] = Query("day"),
     redis_client: redis.Redis = Depends(get_redis),
     _: bool = Depends(require_cache_admin)
 ):
